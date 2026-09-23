@@ -1,37 +1,79 @@
-export type Health = "ok" | "warn" | "high" | "crit";
-export type FetchStatus = "ok" | "not_configured" | "error";
-export type Severity = "crit" | "warn" | "info";
+export type ApiStatus = "healthy" | "warning" | "high" | "critical";
+export type Severity = "critical" | "warning" | "info";
+export type AnomalySeverity = "High" | "Medium" | "Low";
+export type BillingCycle = "Daily" | "Weekly" | "Monthly" | "Annual" | "Custom";
+export type AuthType = "API Key" | "Bearer Token" | "OAuth" | "Custom";
+export type AlertState = "unread" | "read" | "resolved";
 
-/**
- * Live status of one monitored service, returned by /api/usage.
- * `usage` / `limit` are null when a provider is not configured, errored,
- * or doesn't expose usage (renewal-only). The shape is provider-agnostic:
- * each adapter fills it from its own real API.
- */
-export interface ServiceStatus {
+/** A monitored API / SaaS service. Kept flat so a real provider adapter can fill it later. */
+export interface ApiService {
   id: string;
   name: string;
   provider: string;
   color: string;
+  usage: number;
+  limit: number;
   unit: string;
-  usage: number | null;
-  limit: number | null;
-  renewalISO: string | null;
-  usageTracked: boolean;
-  status: FetchStatus;
-  message?: string;
+  renewalDate: string; // ISO yyyy-mm-dd
+  billingCycle: BillingCycle;
+  authType: AuthType;
+  lastChecked: string; // human label, e.g. "4 minutes ago"
 }
 
-export interface UsageResponse {
-  services: ServiceStatus[];
-  fetchedAt: string;
+export interface UsagePoint {
+  date: string; // ISO
+  value: number; // usage percentage 0-100
 }
 
-/** Alerts are derived live from statuses + thresholds — not stored mock data. */
+/** Historical usage percentage per service id (oldest -> newest). */
+export type UsageHistory = Record<string, UsagePoint[]>;
+
 export interface Alert {
   id: string;
-  title: string;
   serviceId: string;
+  title: string;
+  severity: Severity;
+  trigger: string;
+  timeLabel: string;
+  state: AlertState;
+}
+
+export interface NotificationItem {
+  id: string;
+  serviceId: string;
+  title: string;
   severity: Severity;
   timeLabel: string;
+  read: boolean;
+}
+
+export interface Anomaly {
+  id: string;
+  serviceId: string;
+  title: string;
+  description: string;
+  severity: AnomalySeverity;
+}
+
+export interface Renewal {
+  serviceId: string;
+  name: string;
+  color: string;
+  date: string; // ISO
+  daysRemaining: number;
+}
+
+export interface AlertSettings {
+  thresholds: { t50: boolean; t75: boolean; t90: boolean; t100: boolean };
+  spikeDetection: boolean;
+  spikeSensitivity: "Low" | "Medium" | "High";
+  renewalReminders: { d7: boolean; d3: boolean; d1: boolean };
+  emailEnabled: boolean;
+  email: string;
+}
+
+export interface NotificationPrefs {
+  emailAlerts: boolean;
+  renewalReminders: boolean;
+  spikeAlerts: boolean;
 }
