@@ -12,7 +12,7 @@ import { TODAY } from "./format";
 
 export const MOCK_SERVICES: ApiService[] = [
   { id: "zyte", name: "Zyte", provider: "Zyte API", color: "#f97316",
-    usage: 42000, limit: 100000, unit: "requests", renewalDate: "2026-09-30",
+    usage: 420, limit: 1000, unit: "$", renewalDate: "2026-09-30",
     billingCycle: "Monthly", authType: "API Key", lastChecked: "4 minutes ago" },
   { id: "google", name: "Google", provider: "Google Cloud API", color: "#4285f4",
     usage: 78000, limit: 100000, unit: "requests", renewalDate: "2026-10-12",

@@ -62,3 +62,26 @@ export function nextRenewalOnOrAfter(
   while (d.getTime() < refDay.getTime() && guard < 2000) { step(d); guard++; }
   return d.toISOString().slice(0, 10);
 }
+
+/**
+ * Start date of the CURRENT billing period on or after which usage should
+ * be summed — i.e. one cycle before the next renewal. Use this instead of
+ * a fixed rolling window (e.g. "last 30 days") when reporting "usage this
+ * cycle", since a 30-day window can bleed into the previous cycle.
+ */
+export function currentPeriodStart(
+  anchorISO: string,
+  cycle: "Daily" | "Weekly" | "Monthly" | "Annual" | "Custom" | string,
+  ref: Date = new Date(),
+): string {
+  const next = nextRenewalOnOrAfter(anchorISO, cycle, ref);
+  const d = new Date(next + "T00:00:00Z");
+  switch (cycle) {
+    case "Daily": d.setUTCDate(d.getUTCDate() - 1); break;
+    case "Weekly": d.setUTCDate(d.getUTCDate() - 7); break;
+    case "Annual": d.setUTCFullYear(d.getUTCFullYear() - 1); break;
+    case "Monthly":
+    default: d.setUTCMonth(d.getUTCMonth() - 1); break;
+  }
+  return d.toISOString().slice(0, 10);
+}

@@ -1,6 +1,7 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import type {
   ApiService, Alert, AlertState, NotificationItem, AlertSettings, NotificationPrefs,
 } from "@/lib/types";
@@ -13,6 +14,13 @@ import { pct } from "@/lib/format";
 
 interface Account { name: string; email: string }
 type Frequency = "15 minutes" | "30 minutes" | "1 hour" | "6 hours";
+
+const FREQUENCY_MS: Record<Frequency, number> = {
+  "15 minutes": 15 * 60 * 1000,
+  "30 minutes": 30 * 60 * 1000,
+  "1 hour": 60 * 60 * 1000,
+  "6 hours": 6 * 60 * 60 * 1000,
+};
 
 interface AppState {
   hydrated: boolean;
@@ -58,37 +66,78 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const addService = useCallback((s: ApiService) => setServices((prev) => [...prev, s]), [setServices]);
 
-  /** Pull live numbers for any service with a real provider wired up (currently: Decodo). */
+/** Pull live numbers for every service with a real provider wired up (currently: Decodo, Zyte). */
   const fetchLiveData = useCallback(async () => {
-    try {
-      const res = await fetch("/api/decodo", { cache: "no-store" });
-      const data = await res.json();
-      if (!data.configured) return; // no key set — keep showing mock data untouched
+    const [decodoRes, zyteRes] = await Promise.allSettled([
+      fetch("/api/decodo", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/zyte", { cache: "no-store" }).then((r) => r.json()),
+    ]);
+    const decodo = decodoRes.status === "fulfilled" ? decodoRes.value : null;
+    const zyte = zyteRes.status === "fulfilled" ? zyteRes.value : null;
 
-      setServices((prev) => prev.map((s) => {
-        if (s.id !== "decodo") return s;
-        if (data.ok) {
+    setServices((prev) => prev.map((s) => {
+      if (s.id === "decodo" && decodo?.configured) {
+        if (decodo.ok) {
           return {
             ...s,
-            usage: Math.round(data.usageGb * 1000) / 1000,
-            limit: data.limitGb ?? s.limit,
-            unit: data.mode === "webhook" ? "% of threshold" : s.unit,
-            renewalDate: data.renewalDate ?? s.renewalDate,
+            usage: Math.round(decodo.usageGb * 1000) / 1000,
+            limit: decodo.limitGb ?? s.limit,
+            unit: decodo.mode === "webhook" ? "% of threshold" : s.unit,
+            renewalDate: decodo.renewalDate ?? s.renewalDate,
             lastChecked: "just now",
             live: true,
             // even a successful webhook read gets an explanatory note (threshold-only, not continuous)
-            liveNote: data.mode === "webhook" ? data.message : undefined,
+            liveNote: decodo.mode === "webhook" ? decodo.message : undefined,
           };
         }
         // Configured but not fully working yet (unsupported plan, field not set, no event yet) — say so, don't fake it.
-        return { ...s, renewalDate: data.renewalDate ?? s.renewalDate, liveNote: data.message ?? "Live fetch failed.", live: false };
-      }));
-    } catch {
-      // Network/route error — leave the service as-is (mock or last-known-live).
-    }
+        return { ...s, renewalDate: decodo.renewalDate ?? s.renewalDate, liveNote: decodo.message ?? "Live fetch failed.", live: false };
+      }
+      if (s.id === "zyte" && zyte?.configured) {
+        if (zyte.ok) {
+          return {
+            ...s,
+            usage: zyte.usage,
+            limit: zyte.limit ?? s.limit,
+            unit: "$",
+            renewalDate: zyte.renewalDate ?? s.renewalDate,
+            lastChecked: "just now",
+            live: true,
+            liveNote: zyte.limit == null
+              ? "No ZYTE_LIMIT set — this account has no Spending Limit configured on Zyte's own Spending Alerts page either, so this % is against a placeholder, not a real cap."
+              : undefined,
+          };
+        }
+        return { ...s, renewalDate: zyte.renewalDate ?? s.renewalDate, liveNote: zyte.message ?? "Live fetch failed.", live: false };
+      }
+      return s;
+    }));
+    setLastUpdated(Date.now());
   }, [setServices]);
 
-  useEffect(() => { fetchLiveData(); }, [fetchLiveData]);
+  const pathname = usePathname();
+  const lastAutoFetchAt = useRef(0);
+  const MIN_AUTO_FETCH_GAP_MS = 20_000; // avoid hammering rate-limited APIs (e.g. Zyte: 20 req/min) if you navigate quickly
+
+  // Re-check live data whenever the user lands on a new page — the layout
+  // (and this provider) stays mounted across client-side navigation, so
+  // without this, live numbers only ever reflected the very first page load.
+  // Throttled: only the manual Refresh button (fetchLiveData called directly
+  // from `refresh`) is guaranteed to run immediately every time.
+  useEffect(() => {
+    const now = Date.now();
+    if (now - lastAutoFetchAt.current < MIN_AUTO_FETCH_GAP_MS) return;
+    lastAutoFetchAt.current = now;
+    fetchLiveData();
+  }, [fetchLiveData, pathname]);
+
+  // Background polling on the interval chosen in Settings -> Monitoring,
+  // so the dashboard updates even if you just leave a tab open.
+  useEffect(() => {
+    const ms = FREQUENCY_MS[frequency] ?? FREQUENCY_MS["15 minutes"];
+    const id = setInterval(fetchLiveData, ms);
+    return () => clearInterval(id);
+  }, [frequency, fetchLiveData]);
 
   const setAlertState = useCallback((id: string, state: AlertState) =>
     setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, state } : a))), [setAlerts]);
