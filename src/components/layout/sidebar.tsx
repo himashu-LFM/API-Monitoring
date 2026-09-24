@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Settings } from "lucide-react";
+import { Activity, Settings, LogOut } from "lucide-react";
+import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "./nav";
 import { useAppState } from "@/hooks/use-app-state";
@@ -70,6 +71,20 @@ export function SidebarContent({ collapsed = false, onNavigate }: { collapsed?: 
           <Settings className="size-4 shrink-0" />
           {!collapsed && <span>Settings</span>}
         </Link>
+
+        <button
+          type="button"
+          onClick={() => signOut({ callbackUrl: "/login" })}
+          title={collapsed ? "Log out" : undefined}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
+            "text-muted-foreground hover:bg-crit/10 hover:text-crit",
+            collapsed && "justify-center px-2",
+          )}
+        >
+          <LogOut className="size-4 shrink-0" />
+          {!collapsed && <span>Log out</span>}
+        </button>
 
         <div className={cn("mt-2 flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground", collapsed && "justify-center px-0")}>
           <span className="relative flex size-2">
