@@ -18,6 +18,10 @@ export interface ApiService {
   billingCycle: BillingCycle;
   authType: AuthType;
   lastChecked: string; // human label, e.g. "4 minutes ago"
+  /** true once real numbers have replaced the mock defaults for this service. */
+  live?: boolean;
+  /** Set when a live fetch was attempted but failed/needs setup — shown as a note, never hidden. */
+  liveNote?: string;
 }
 
 export interface UsagePoint {

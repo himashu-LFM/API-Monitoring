@@ -65,11 +65,24 @@ export function ApiDetail({ id }: { id: string }) {
               <span className="inline-flex items-center gap-1.5 rounded-full bg-ok/10 px-2 py-0.5 text-xs font-medium text-ok">
                 <span className="size-1.5 rounded-full bg-ok" /> Connected
               </span>
+              {service.live && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-info/10 px-2 py-0.5 text-xs font-medium text-info">
+                  <span className="size-1.5 rounded-full bg-info" /> Live data
+                </span>
+              )}
             </div>
             <p className="text-sm text-muted-foreground">{service.provider} · Last checked {service.lastChecked}</p>
           </div>
           <StatusBadge status={getUsageStatus(p)} />
         </CardContent>
+        {service.liveNote && (
+          <CardContent className="pt-0">
+            <div className="flex items-start gap-2 rounded-md bg-warn/10 p-3 text-xs text-warn">
+              <span>ℹ️</span>
+              <span>{service.liveNote}</span>
+            </div>
+          </CardContent>
+        )}
       </Card>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

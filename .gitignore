@@ -7,3 +7,4 @@ npm-debug.log*
 *.pem
 .env*.local
 next-env.d.ts
+/.data

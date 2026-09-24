@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type {
   ApiService, Alert, AlertState, NotificationItem, AlertSettings, NotificationPrefs,
 } from "@/lib/types";
@@ -58,6 +58,38 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const addService = useCallback((s: ApiService) => setServices((prev) => [...prev, s]), [setServices]);
 
+  /** Pull live numbers for any service with a real provider wired up (currently: Decodo). */
+  const fetchLiveData = useCallback(async () => {
+    try {
+      const res = await fetch("/api/decodo", { cache: "no-store" });
+      const data = await res.json();
+      if (!data.configured) return; // no key set — keep showing mock data untouched
+
+      setServices((prev) => prev.map((s) => {
+        if (s.id !== "decodo") return s;
+        if (data.ok) {
+          return {
+            ...s,
+            usage: Math.round(data.usageGb * 1000) / 1000,
+            limit: data.limitGb ?? s.limit,
+            unit: data.mode === "webhook" ? "% of threshold" : s.unit,
+            renewalDate: data.renewalDate ?? s.renewalDate,
+            lastChecked: "just now",
+            live: true,
+            // even a successful webhook read gets an explanatory note (threshold-only, not continuous)
+            liveNote: data.mode === "webhook" ? data.message : undefined,
+          };
+        }
+        // Configured but not fully working yet (unsupported plan, field not set, no event yet) — say so, don't fake it.
+        return { ...s, renewalDate: data.renewalDate ?? s.renewalDate, liveNote: data.message ?? "Live fetch failed.", live: false };
+      }));
+    } catch {
+      // Network/route error — leave the service as-is (mock or last-known-live).
+    }
+  }, [setServices]);
+
+  useEffect(() => { fetchLiveData(); }, [fetchLiveData]);
+
   const setAlertState = useCallback((id: string, state: AlertState) =>
     setAlerts((prev) => prev.map((a) => (a.id === id ? { ...a, state } : a))), [setAlerts]);
 
@@ -76,16 +108,18 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = useCallback(() => {
     setRefreshing(true);
-    setTimeout(() => {
+    setTimeout(async () => {
       setServices((prev) => prev.map((s) => {
+        if (s.live) return s; // live services get real data below, not mock jitter
         const jitter = Math.max(-4, Math.min(4, Math.round((Math.random() - 0.4) * 5)));
         const p = Math.max(2, Math.min(100, pct(s.usage, s.limit) + jitter));
         return { ...s, usage: Math.round((p / 100) * s.limit), lastChecked: "just now" };
       }));
+      await fetchLiveData();
       setLastUpdated(Date.now());
       setRefreshing(false);
     }, 750);
-  }, [setServices]);
+  }, [setServices, fetchLiveData]);
 
   const unreadNotifications = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
 
