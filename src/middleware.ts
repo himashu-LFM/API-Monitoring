@@ -45,7 +45,10 @@ export default auth((req) => {
   return;
 });
 
-// Run on everything except Next internals, static files, and the auth API.
+// Run on everything except Next internals, static files, the auth API, and
+// routes called by external services with no browser session — the usage-
+// alert cron (GitHub Actions) and the Decodo webhook. Those are protected by
+// their own secret token (CRON_SECRET / DECODO_WEBHOOK_TOKEN), not login.
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\..*).*)"],
+  matcher: ["/((?!api/auth|api/cron|api/webhooks|_next/static|_next/image|favicon.ico|.*\\..*).*)"],
 };

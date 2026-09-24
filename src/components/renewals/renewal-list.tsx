@@ -10,7 +10,10 @@ import type { ApiService } from "@/lib/types";
 
 export function RenewalList({ services, limit }: { services: ApiService[]; limit?: number }) {
   const router = useRouter();
-  const sorted = [...services].sort((a, b) => daysUntil(a.renewalDate) - daysUntil(b.renewalDate));
+  // Services with no renewal date (e.g. SadCaptcha — prepaid credits that
+  // never expire) simply don't belong in a renewals list.
+  const withDates = services.filter((s) => s.renewalDate);
+  const sorted = [...withDates].sort((a, b) => daysUntil(a.renewalDate) - daysUntil(b.renewalDate));
   const shown = limit ? sorted.slice(0, limit) : sorted;
 
   if (shown.length === 0) {

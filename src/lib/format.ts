@@ -1,9 +1,21 @@
-// Pinned "today" so mock day-remaining math is stable across the app.
-export const TODAY = new Date("2026-09-22T00:00:00");
+/**
+ * Local midnight of the real current day.
+ *
+ * This used to be a hard-pinned date ("2026-09-22") so the all-mock build had
+ * stable numbers. Now that renewal dates come from real accounts, a pinned
+ * "today" silently made every "days remaining" wrong — and drifted further
+ * every real day that passed. Keep this a function, not a module constant, so
+ * a long-running tab/server can't freeze on the day it started.
+ */
+export function today(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 export function daysUntil(iso: string): number {
   const d = new Date(iso + (iso.length <= 10 ? "T00:00:00" : ""));
-  return Math.round((d.getTime() - TODAY.getTime()) / 86400000);
+  return Math.round((d.getTime() - today().getTime()) / 86400000);
 }
 
 export function fmtDate(iso: string): string {
@@ -60,5 +72,28 @@ export function nextRenewalOnOrAfter(
   const d = new Date(anchor);
   let guard = 0;
   while (d.getTime() < refDay.getTime() && guard < 2000) { step(d); guard++; }
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Start date of the CURRENT billing period on or after which usage should
+ * be summed — i.e. one cycle before the next renewal. Use this instead of
+ * a fixed rolling window (e.g. "last 30 days") when reporting "usage this
+ * cycle", since a 30-day window can bleed into the previous cycle.
+ */
+export function currentPeriodStart(
+  anchorISO: string,
+  cycle: "Daily" | "Weekly" | "Monthly" | "Annual" | "Custom" | string,
+  ref: Date = new Date(),
+): string {
+  const next = nextRenewalOnOrAfter(anchorISO, cycle, ref);
+  const d = new Date(next + "T00:00:00Z");
+  switch (cycle) {
+    case "Daily": d.setUTCDate(d.getUTCDate() - 1); break;
+    case "Weekly": d.setUTCDate(d.getUTCDate() - 7); break;
+    case "Annual": d.setUTCFullYear(d.getUTCFullYear() - 1); break;
+    case "Monthly":
+    default: d.setUTCMonth(d.getUTCMonth() - 1); break;
+  }
   return d.toISOString().slice(0, 10);
 }

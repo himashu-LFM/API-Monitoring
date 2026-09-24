@@ -8,3 +8,4 @@ npm-debug.log*
 .env*.local
 next-env.d.ts
 /.data
+tsconfig.tsbuildinfo
