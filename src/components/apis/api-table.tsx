@@ -33,7 +33,8 @@ export function ApiTable({ services }: { services: ApiService[] }) {
         <TableBody>
           {services.map((s) => {
             const p = pct(s.usage, s.limit);
-            const d = daysUntil(s.renewalDate);
+            const hasRenewal = !!s.renewalDate;
+            const d = hasRenewal ? daysUntil(s.renewalDate) : null;
             return (
               <TableRow
                 key={s.id}
@@ -67,8 +68,14 @@ export function ApiTable({ services }: { services: ApiService[] }) {
                 <TableCell className="text-right tabular-nums">{fmtNum(s.limit)}</TableCell>
                 <TableCell className="text-right tabular-nums">{fmtNum(s.limit - s.usage)}</TableCell>
                 <TableCell>
-                  <div className="font-medium tabular-nums">{d}d</div>
-                  <div className="text-xs text-muted-foreground">{fmtDateShort(s.renewalDate)}</div>
+                  {hasRenewal ? (
+                    <>
+                      <div className="font-medium tabular-nums">{d}d</div>
+                      <div className="text-xs text-muted-foreground">{fmtDateShort(s.renewalDate)}</div>
+                    </>
+                  ) : (
+                    <div className="text-xs text-muted-foreground">No expiry</div>
+                  )}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{s.lastChecked}</TableCell>
                 <TableCell>

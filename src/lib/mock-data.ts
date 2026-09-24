@@ -2,7 +2,7 @@ import type {
   ApiService, UsageHistory, UsagePoint, Alert, Anomaly, NotificationItem,
   AlertSettings, NotificationPrefs,
 } from "./types";
-import { TODAY } from "./format";
+import { today } from "./format";
 
 /**
  * Centralized mock data layer. All fictional — not real provider data.
@@ -23,6 +23,9 @@ export const MOCK_SERVICES: ApiService[] = [
   { id: "hootsuite", name: "Hootsuite", provider: "Hootsuite Social API", color: "#e11d48",
     usage: 91000, limit: 100000, unit: "calls", renewalDate: "2026-09-25",
     billingCycle: "Annual", authType: "OAuth", lastChecked: "4 minutes ago" },
+  { id: "sadcaptcha", name: "SadCaptcha", provider: "SadCaptcha API", color: "#a855f7",
+    usage: 4200, limit: 10000, unit: "credits", renewalDate: "",
+    billingCycle: "Custom", authType: "API Key", lastChecked: "4 minutes ago" },
 ];
 
 // Deterministic 90-day daily usage-% history so charts look real but stable.
@@ -35,7 +38,7 @@ function genHistory(end: number, volatility: number, seed: number, spikeDay?: nu
     v += (end - v) / (90 - i) + (rand() - 0.45) * volatility;
     if (spikeDay !== undefined && i === spikeDay) v += 16;
     v = Math.max(2, Math.min(100, v));
-    const d = new Date(TODAY);
+    const d = today();
     d.setDate(d.getDate() - (89 - i));
     out.push({ date: d.toISOString().slice(0, 10), value: Math.round(v * 10) / 10 });
   }
@@ -48,6 +51,7 @@ export const MOCK_USAGE_HISTORY: UsageHistory = {
   google: genHistory(78, 5, 29),
   decodo: genHistory(67, 5, 47),
   hootsuite: genHistory(91, 5, 73, 87),
+  sadcaptcha: genHistory(42, 4, 19),
 };
 
 export const MOCK_ALERTS: Alert[] = [
@@ -84,4 +88,4 @@ export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
   spikeAlerts: true,
 };
 
-export const PROVIDER_OPTIONS = ["Zyte", "Google", "Hootsuite", "Decodo", "Custom API"] as const;
+export const PROVIDER_OPTIONS = ["Zyte", "Google", "Hootsuite", "Decodo", "SadCaptcha", "Custom API"] as const;

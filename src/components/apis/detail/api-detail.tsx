@@ -39,15 +39,16 @@ export function ApiDetail({ id }: { id: string }) {
   }
 
   const p = pct(service.usage, service.limit);
-  const d = daysUntil(service.renewalDate);
+  const hasRenewal = !!service.renewalDate;
+  const d = hasRenewal ? daysUntil(service.renewalDate) : null;
 
   const metrics = [
     { label: "Current usage", value: fmtNum(service.usage), sub: service.unit },
     { label: "Usage limit", value: fmtNum(service.limit), sub: `${service.unit}/cycle` },
     { label: "Remaining", value: fmtNum(service.limit - service.usage), sub: `${100 - p}% left` },
     { label: "Usage", value: `${p}%`, sub: getUsageStatus(p) },
-    { label: "Renewal", value: fmtDate(service.renewalDate), sub: service.billingCycle, small: true },
-    { label: "Days remaining", value: `${d}`, sub: "until renewal" },
+    { label: "Renewal", value: hasRenewal ? fmtDate(service.renewalDate) : "No expiry", sub: hasRenewal ? service.billingCycle : "credits don't expire", small: true },
+    { label: "Days remaining", value: d != null ? `${d}` : "—", sub: hasRenewal ? "until renewal" : "n/a" },
   ];
 
   return (

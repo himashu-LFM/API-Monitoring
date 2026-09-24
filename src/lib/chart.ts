@@ -1,13 +1,13 @@
 import type { ApiService } from "./types";
 import { MOCK_USAGE_HISTORY } from "./mock-data";
-import { TODAY, fmtDateShort, pct } from "./format";
+import { today, fmtDateShort, pct } from "./format";
 import type { ChartSeries } from "@/components/charts/usage-chart";
 
 /** Short date labels for the last `days` days ending today. */
 export function rangeLabels(days: number): string[] {
   const out: string[] = [];
   for (let i = days - 1; i >= 0; i--) {
-    const d = new Date(TODAY);
+    const d = today();
     d.setDate(d.getDate() - i);
     out.push(fmtDateShort(d.toISOString().slice(0, 10)));
   }

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/hooks/use-app-state";
 import { RenewalList } from "./renewal-list";
-import { TODAY } from "@/lib/format";
+import { today } from "@/lib/format";
 import type { ApiService } from "@/lib/types";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -15,7 +15,8 @@ function MonthCalendar({ year, month, services }: { year: number; month: number;
   const router = useRouter();
   const first = new Date(year, month, 1).getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const isThisMonth = TODAY.getFullYear() === year && TODAY.getMonth() === month;
+  const now = today();
+  const isThisMonth = now.getFullYear() === year && now.getMonth() === month;
 
   const byDay: Record<number, ApiService[]> = {};
   for (const s of services) {
@@ -38,7 +39,7 @@ function MonthCalendar({ year, month, services }: { year: number; month: number;
           {cells.map((d, i) => d === null ? <div key={i} /> : (
             <div key={i} className={cn(
               "flex min-h-14 flex-col gap-1 rounded-md border bg-muted/30 p-1.5",
-              isThisMonth && d === TODAY.getDate() && "border-primary ring-1 ring-primary",
+              isThisMonth && d === now.getDate() && "border-primary ring-1 ring-primary",
             )}>
               <span className="text-[11px] font-medium text-muted-foreground">{d}</span>
               {(byDay[d] ?? []).map((s) => (
@@ -62,8 +63,10 @@ function MonthCalendar({ year, month, services }: { year: number; month: number;
 export function RenewalsView() {
   const { services } = useAppState();
 
+  // Skip services with no renewal date (e.g. SadCaptcha — non-expiring credits).
+  const dated = services.filter((s) => s.renewalDate);
   const months = Array.from(
-    new Set(services.map((s) => {
+    new Set(dated.map((s) => {
       const d = new Date(s.renewalDate + "T00:00:00");
       return `${d.getFullYear()}-${d.getMonth()}`;
     })),

@@ -66,14 +66,29 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
   const addService = useCallback((s: ApiService) => setServices((prev) => [...prev, s]), [setServices]);
 
-/** Pull live numbers for every service with a real provider wired up (currently: Decodo, Zyte). */
+  // Once services have hydrated from localStorage, backfill any built-in
+  // services that were added to the code AFTER this browser first saved its
+  // list (e.g. SadCaptcha) — otherwise a returning user with an older saved
+  // array would never see the new default service. Runs once per new default.
+  useEffect(() => {
+    if (!hy1) return;
+    setServices((prev) => {
+      const ids = new Set(prev.map((s) => s.id));
+      const missing = MOCK_SERVICES.filter((m) => !ids.has(m.id));
+      return missing.length ? [...prev, ...missing] : prev;
+    });
+  }, [hy1, setServices]);
+
+/** Pull live numbers for every service with a real provider wired up (currently: Decodo, Zyte, SadCaptcha). */
   const fetchLiveData = useCallback(async () => {
-    const [decodoRes, zyteRes] = await Promise.allSettled([
+    const [decodoRes, zyteRes, sadcaptchaRes] = await Promise.allSettled([
       fetch("/api/decodo", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/zyte", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/sadcaptcha", { cache: "no-store" }).then((r) => r.json()),
     ]);
     const decodo = decodoRes.status === "fulfilled" ? decodoRes.value : null;
     const zyte = zyteRes.status === "fulfilled" ? zyteRes.value : null;
+    const sadcaptcha = sadcaptchaRes.status === "fulfilled" ? sadcaptchaRes.value : null;
 
     setServices((prev) => prev.map((s) => {
       if (s.id === "decodo" && decodo?.configured) {
@@ -109,6 +124,26 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           };
         }
         return { ...s, renewalDate: zyte.renewalDate ?? s.renewalDate, liveNote: zyte.message ?? "Live fetch failed.", live: false };
+      }
+      if (s.id === "sadcaptcha" && sadcaptcha?.configured) {
+        if (sadcaptcha.ok) {
+          const hasTotal = sadcaptcha.usage != null && sadcaptcha.limit != null;
+          // With a known total: usage = consumed, limit = total => real % used.
+          // Without it: we only know credits remaining. Show usage=0 so the bar
+          // stays green (not a misleading red 100%), put the real remaining in
+          // the Remaining column (limit - usage), and let the note explain that
+          // a true % needs SADCAPTCHA_TOTAL_CREDITS.
+          return {
+            ...s,
+            usage: hasTotal ? sadcaptcha.usage : 0,
+            limit: hasTotal ? sadcaptcha.limit : sadcaptcha.remaining,
+            unit: "credits",
+            lastChecked: "just now",
+            live: true,
+            liveNote: hasTotal ? undefined : sadcaptcha.message,
+          };
+        }
+        return { ...s, liveNote: sadcaptcha.message ?? "Live fetch failed.", live: false };
       }
       return s;
     }));

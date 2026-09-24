@@ -1,9 +1,21 @@
-// Pinned "today" so mock day-remaining math is stable across the app.
-export const TODAY = new Date("2026-09-22T00:00:00");
+/**
+ * Local midnight of the real current day.
+ *
+ * This used to be a hard-pinned date ("2026-09-22") so the all-mock build had
+ * stable numbers. Now that renewal dates come from real accounts, a pinned
+ * "today" silently made every "days remaining" wrong — and drifted further
+ * every real day that passed. Keep this a function, not a module constant, so
+ * a long-running tab/server can't freeze on the day it started.
+ */
+export function today(): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
 export function daysUntil(iso: string): number {
   const d = new Date(iso + (iso.length <= 10 ? "T00:00:00" : ""));
-  return Math.round((d.getTime() - TODAY.getTime()) / 86400000);
+  return Math.round((d.getTime() - today().getTime()) / 86400000);
 }
 
 export function fmtDate(iso: string): string {
