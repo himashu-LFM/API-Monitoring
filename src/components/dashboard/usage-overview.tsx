@@ -39,10 +39,10 @@ export function UsageOverview() {
   const [selected, setSelected] = useState<string>("all");
   const [days, setDays] = useState<number>(30);
 
-  // Threshold-only providers (Decodo on datacenter) report nothing between
-  // their 80%/100% webhooks, so they have no trend to plot — charting them
-  // would mean inventing the line. Leave them out of the chart entirely.
-  const chartable = useMemo(() => services.filter((s) => !s.thresholdOnly), [services]);
+  // Services with a special alert mode have no real history to plot —
+  // Decodo reports nothing between its 80%/100% webhooks, SadCaptcha has no
+  // history endpoint at all. Charting them would mean inventing the line.
+  const chartable = useMemo(() => services.filter((s) => !s.alertMode), [services]);
 
   const labels = useMemo(() => rangeLabels(days), [days]);
   const series = useMemo(() => buildUsageSeries(chartable, selected, days), [chartable, selected, days]);

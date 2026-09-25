@@ -105,7 +105,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             live: true,
             // even a successful webhook read gets an explanatory note (threshold-only, not continuous)
             liveNote: decodo.mode === "webhook" ? decodo.message : undefined,
-            thresholdOnly: decodo.mode === "webhook",
+            alertMode: decodo.mode === "webhook" ? "fixed-webhook" : undefined,
           };
         }
         // Configured but not fully working yet (unsupported plan, field not set, no event yet) — say so, don't fake it.
@@ -114,7 +114,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           renewalDate: decodo.renewalDate ?? s.renewalDate,
           liveNote: decodo.message ?? "Live fetch failed.",
           live: false,
-          thresholdOnly: decodo.mode === "webhook",
+          alertMode: decodo.mode === "webhook" ? "fixed-webhook" : undefined,
         };
       }
       if (s.id === "zyte" && zyte?.configured) {
@@ -150,9 +150,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             lastChecked: "just now",
             live: true,
             liveNote: hasTotal ? undefined : sadcaptcha.message,
+            alertMode: "low-balance",
           };
         }
-        return { ...s, liveNote: sadcaptcha.message ?? "Live fetch failed.", live: false };
+        return { ...s, liveNote: sadcaptcha.message ?? "Live fetch failed.", live: false, alertMode: "low-balance" };
       }
       if (s.id === "google" && google?.configured) {
         if (google.ok) {

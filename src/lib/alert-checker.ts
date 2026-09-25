@@ -5,6 +5,10 @@ import { fetchDecodoUsage } from "./providers/decodo";
 import { fetchGoogleUsage } from "./providers/google";
 import { sendAlertEmail, emailConfigured } from "./email";
 import { highestNotified, recordNotified, pruneOldCycles } from "./alert-state";
+import { LOW_BALANCE_FLOOR } from "./alert-rules";
+
+/** Stand-in cycle key for balance-based services, which have no billing cycle. */
+const LOW_BALANCE_CYCLE = "lowbalance";
 
 /**
  * Server-side usage-threshold checker.
@@ -27,6 +31,14 @@ export interface CheckedService {
   /** threshold just crossed and emailed on this run, if any */
   firedThreshold?: number;
   skipped?: string;
+  /**
+   * Set for prepaid-credit services (SadCaptcha) that are judged on the balance
+   * left rather than a percentage of a cycle. `remaining` is the live balance
+   * and `firedLowBalance` marks the run that emailed about it.
+   */
+  rule?: "low-balance";
+  remaining?: number | null;
+  firedLowBalance?: boolean;
 }
 
 export interface CheckResult {
@@ -85,7 +97,21 @@ async function gather(): Promise<{ checked: CheckedService[]; cycleKeys: string[
   };
 
   add("zyte", "Zyte", "$", zyte.ok, zyte.configured, zyte.usage, zyte.limit, zyte.renewalDate, zyte.message);
-  add("sadcaptcha", "SadCaptcha", "credits", sad.ok, sad.configured, sad.usage, sad.limit, undefined, sad.message);
+
+  // SadCaptcha credits are prepaid and never expire, so there is no cycle to be
+  // a percentage of — it's judged purely on the balance left. LOW_BALANCE_CYCLE
+  // is a constant "cycle" so the existing dedup store can hold its one record.
+  cycleKeys.push(LOW_BALANCE_CYCLE);
+  checked.push({
+    id: "sadcaptcha", name: "SadCaptcha", unit: "credits",
+    cycleKey: LOW_BALANCE_CYCLE, rule: "low-balance",
+    usage: sad.usage ?? null, limit: sad.limit ?? null, percent: null,
+    remaining: sad.remaining ?? null,
+    skipped: !sad.configured ? "not configured"
+      : !sad.ok || sad.remaining == null ? (sad.message || "no usable credit balance")
+      : undefined,
+  });
+
   // Decodo on datacenter only reports 80%/100% webhook crossings; when that's
   // all we have, `usageGb` is already a percentage against limitGb=100.
   add("decodo", "Decodo", decodo.mode === "webhook" ? "%" : "GB", decodo.ok, decodo.configured, decodo.usageGb, decodo.limitGb, decodo.renewalDate, decodo.message);
@@ -99,11 +125,20 @@ async function gather(): Promise<{ checked: CheckedService[]; cycleKeys: string[
 
 function renderEmail(fired: CheckedService[]): { subject: string; html: string } {
   const worst = fired.reduce((a, b) => ((b.percent ?? 0) > (a.percent ?? 0) ? b : a));
-  const subject = fired.length === 1
-    ? `API Monitor: ${worst.name} reached ${worst.firedThreshold}% usage`
-    : `API Monitor: ${fired.length} services crossed a usage threshold`;
+  const single = fired[0];
+  const subject = fired.length > 1
+    ? `API Monitor: ${fired.length} services need attention`
+    : single.firedLowBalance
+      ? `API Monitor: ${single.name} is down to ${(single.remaining ?? 0).toLocaleString()} credits`
+      : `API Monitor: ${worst.name} reached ${worst.firedThreshold}% usage`;
 
-  const rows = fired.map((s) => `
+  const rows = fired.map((s) => s.firedLowBalance ? `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee;font-weight:600">${s.name}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee">${(s.remaining ?? 0).toLocaleString()} ${s.unit} left</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee;color:#5b616e">prepaid credits, no expiry</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee;color:#b91c1c;font-weight:600">below ${LOW_BALANCE_FLOOR.toLocaleString()}</td>
+    </tr>` : `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee;font-weight:600">${s.name}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee">${s.percent}% used</td>
@@ -116,7 +151,7 @@ function renderEmail(fired: CheckedService[]): { subject: string; html: string }
 
   const html = `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:600px">
-    <h2 style="margin:0 0 4px">Usage threshold reached</h2>
+    <h2 style="margin:0 0 4px">${fired.every((s) => s.firedLowBalance) ? "Credit balance running low" : "Usage threshold reached"}</h2>
     <p style="margin:0 0 16px;color:#5b616e">Checked ${new Date().toUTCString()}</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px">
       <thead><tr>
@@ -128,7 +163,8 @@ function renderEmail(fired: CheckedService[]): { subject: string; html: string }
       <tbody>${rows}</tbody>
     </table>
     <p style="margin:20px 0 0;color:#8a909c;font-size:12px">
-      You'll only get one email per threshold per billing cycle.
+      You'll only get one email per threshold per billing cycle — and for prepaid
+      credits, one email per drop below the floor, re-armed after a top-up.
     </p>
   </div>`;
 
@@ -140,6 +176,22 @@ export async function runUsageCheck(): Promise<CheckResult> {
   const fired: CheckedService[] = [];
 
   for (const s of checked) {
+    if (s.rule === "low-balance") {
+      if (s.remaining == null) continue;
+      const armed = (await highestNotified(s.id, s.cycleKey)) === 0;
+      if (s.remaining < LOW_BALANCE_FLOOR) {
+        // Only the run that crosses the floor mails; later runs stay quiet until
+        // a top-up puts the balance back above it and re-arms the rule.
+        if (!armed) continue;
+        s.firedLowBalance = true;
+        fired.push(s);
+        await recordNotified(s.id, s.cycleKey, 1);
+      } else if (!armed) {
+        await recordNotified(s.id, s.cycleKey, 0); // topped up — re-arm
+      }
+      continue;
+    }
+
     if (s.percent == null) continue;
     const hit = crossedThreshold(s.percent);
     if (hit === 0) continue;

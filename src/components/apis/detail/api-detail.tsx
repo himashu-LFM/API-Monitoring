@@ -14,6 +14,7 @@ import { useAppState } from "@/hooks/use-app-state";
 import { getUsageStatus } from "@/lib/status";
 import { pct, fmtNum, fmtDate, daysUntil } from "@/lib/format";
 import { rangeLabels, usageValues } from "@/lib/chart";
+import { LOW_BALANCE_FLOOR } from "@/lib/alert-rules";
 
 export function ApiDetail({ id }: { id: string }) {
   const { services } = useAppState();
@@ -96,25 +97,45 @@ export function ApiDetail({ id }: { id: string }) {
         ))}
       </div>
 
-      {service.thresholdOnly ? (
-        // Nothing to chart and nothing to configure: this provider only tells us
-        // when it crosses its own fixed thresholds, so a trend line would be
-        // invented and our own 50/75% settings could never fire.
+      {service.alertMode ? (
+        // Nothing honest to chart and nothing of ours to configure. Either the
+        // provider only speaks at its own fixed points, or it gives a single
+        // current number with no history endpoint — a trend line would be invented
+        // and our own 50/75% settings could never fire correctly.
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Threshold alerts only</CardTitle>
+            <CardTitle className="text-base">
+              {service.alertMode === "fixed-webhook" ? "Threshold alerts only" : "Low-balance alert only"}
+            </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>
-              {service.name} reports usage by webhook when it crosses{" "}
-              <span className="font-medium text-foreground">80%</span> and{" "}
-              <span className="font-medium text-foreground">100%</span> — there is no
-              continuous figure in between, so there is no usage history to chart.
-            </p>
-            <p>
-              Alert thresholds aren&apos;t configurable here either: the 80/100% points are
-              fixed by {service.name}, not by this dashboard.
-            </p>
+            {service.alertMode === "fixed-webhook" ? (
+              <>
+                <p>
+                  {service.name} reports usage by webhook when it crosses{" "}
+                  <span className="font-medium text-foreground">80%</span> and{" "}
+                  <span className="font-medium text-foreground">100%</span> — there is no
+                  continuous figure in between, so there is no usage history to chart.
+                </p>
+                <p>
+                  Alert thresholds aren&apos;t configurable here either: the 80/100% points are
+                  fixed by {service.name}, not by this dashboard.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  {service.name} only exposes the credits remaining right now — there is no
+                  history endpoint, so any trend line here would be made up rather than measured.
+                </p>
+                <p>
+                  Instead of percentage thresholds, this service emails once when the balance
+                  drops below{" "}
+                  <span className="font-medium text-foreground">{fmtNum(LOW_BALANCE_FLOOR)}</span>{" "}
+                  credits, and re-arms after a top-up.
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
       ) : (

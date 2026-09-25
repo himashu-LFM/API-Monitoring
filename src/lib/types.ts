@@ -23,13 +23,19 @@ export interface ApiService {
   /** Set when a live fetch was attempted but failed/needs setup — shown as a note, never hidden. */
   liveNote?: string;
   /**
-   * True when the provider only reports discrete threshold crossings rather
-   * than a continuous number (Decodo on a datacenter plan: webhooks fire at
-   * 80% and 100%, nothing in between). Such a service has no usage history to
-   * chart and no thresholds of our own to configure, so the UI hides both
-   * instead of drawing a fabricated trend line.
+   * How this service alerts — which also decides what the detail page can
+   * honestly show. When set, there is no real usage history to chart and no
+   * percentage thresholds of ours to configure, so the UI hides both rather
+   * than drawing a fabricated trend line:
+   *
+   *  - "fixed-webhook": the provider only pings at its own fixed points
+   *    (Decodo on datacenter: 80% and 100%, nothing in between).
+   *  - "low-balance": prepaid credits with no history endpoint (SadCaptcha);
+   *    the alert fires when the remaining balance drops below a floor.
+   *
+   * Unset means normal percentage thresholds, with chart and config shown.
    */
-  thresholdOnly?: boolean;
+  alertMode?: "fixed-webhook" | "low-balance";
 }
 
 export interface UsagePoint {
