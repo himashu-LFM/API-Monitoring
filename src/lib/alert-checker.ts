@@ -2,6 +2,7 @@ import "server-only";
 import { fetchZyteUsage } from "./providers/zyte";
 import { fetchSadCaptchaUsage } from "./providers/sadcaptcha";
 import { fetchDecodoUsage } from "./providers/decodo";
+import { fetchGoogleUsage } from "./providers/google";
 import { sendAlertEmail, emailConfigured } from "./email";
 import { highestNotified, recordNotified, pruneOldCycles } from "./alert-state";
 
@@ -57,10 +58,11 @@ function cycleKey(renewalDate?: string): string {
 }
 
 async function gather(): Promise<{ checked: CheckedService[]; cycleKeys: string[] }> {
-  const [zyte, sad, decodo] = await Promise.all([
+  const [zyte, sad, decodo, google] = await Promise.all([
     fetchZyteUsage(),
     fetchSadCaptchaUsage(),
     fetchDecodoUsage(),
+    fetchGoogleUsage(),
   ]);
 
   const checked: CheckedService[] = [];
@@ -87,6 +89,10 @@ async function gather(): Promise<{ checked: CheckedService[]; cycleKeys: string[
   // Decodo on datacenter only reports 80%/100% webhook crossings; when that's
   // all we have, `usageGb` is already a percentage against limitGb=100.
   add("decodo", "Decodo", decodo.mode === "webhook" ? "%" : "GB", decodo.ok, decodo.configured, decodo.usageGb, decodo.limitGb, decodo.renewalDate, decodo.message);
+  // YouTube quota resets DAILY at midnight PT — use the PT date as the cycle key
+  // so the "one email per threshold per cycle" dedup resets every day.
+  const ptDay = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+  add("google", "YouTube", "units", google.ok, google.configured, google.usage, google.limit, ptDay, google.message);
 
   return { checked, cycleKeys };
 }

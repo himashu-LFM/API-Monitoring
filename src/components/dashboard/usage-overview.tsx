@@ -39,10 +39,15 @@ export function UsageOverview() {
   const [selected, setSelected] = useState<string>("all");
   const [days, setDays] = useState<number>(30);
 
-  const labels = useMemo(() => rangeLabels(days), [days]);
-  const series = useMemo(() => buildUsageSeries(services, selected, days), [services, selected, days]);
+  // Threshold-only providers (Decodo on datacenter) report nothing between
+  // their 80%/100% webhooks, so they have no trend to plot — charting them
+  // would mean inventing the line. Leave them out of the chart entirely.
+  const chartable = useMemo(() => services.filter((s) => !s.thresholdOnly), [services]);
 
-  const apiOptions = [{ label: "All APIs", value: "all" }, ...services.map((s) => ({ label: s.name, value: s.id }))];
+  const labels = useMemo(() => rangeLabels(days), [days]);
+  const series = useMemo(() => buildUsageSeries(chartable, selected, days), [chartable, selected, days]);
+
+  const apiOptions = [{ label: "All APIs", value: "all" }, ...chartable.map((s) => ({ label: s.name, value: s.id }))];
 
   return (
     <Card>

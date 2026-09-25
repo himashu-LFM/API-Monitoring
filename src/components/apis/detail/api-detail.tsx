@@ -96,22 +96,45 @@ export function ApiDetail({ id }: { id: string }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-            <CardTitle className="text-base">Usage history</CardTitle>
-            <div className="flex items-center gap-2">
-              <Segmented options={[{ label: "Usage", value: "usage" }, { label: "Remaining", value: "remaining" }]} value={tab} onChange={setTab} />
-              <Segmented options={[{ label: "7D", value: 7 }, { label: "30D", value: 30 }, { label: "90D", value: 90 }]} value={days} onChange={setDays} />
-            </div>
+      {service.thresholdOnly ? (
+        // Nothing to chart and nothing to configure: this provider only tells us
+        // when it crosses its own fixed thresholds, so a trend line would be
+        // invented and our own 50/75% settings could never fire.
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Threshold alerts only</CardTitle>
           </CardHeader>
-          <CardContent>
-            <UsageChart labels={labels} series={series} showThresholds={tab === "usage"} />
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p>
+              {service.name} reports usage by webhook when it crosses{" "}
+              <span className="font-medium text-foreground">80%</span> and{" "}
+              <span className="font-medium text-foreground">100%</span> — there is no
+              continuous figure in between, so there is no usage history to chart.
+            </p>
+            <p>
+              Alert thresholds aren&apos;t configurable here either: the 80/100% points are
+              fixed by {service.name}, not by this dashboard.
+            </p>
           </CardContent>
         </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+              <CardTitle className="text-base">Usage history</CardTitle>
+              <div className="flex items-center gap-2">
+                <Segmented options={[{ label: "Usage", value: "usage" }, { label: "Remaining", value: "remaining" }]} value={tab} onChange={setTab} />
+                <Segmented options={[{ label: "7D", value: 7 }, { label: "30D", value: 30 }, { label: "90D", value: 90 }]} value={days} onChange={setDays} />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <UsageChart labels={labels} series={series} showThresholds={tab === "usage"} />
+            </CardContent>
+          </Card>
 
-        <AlertConfiguration serviceId={service.id} />
-      </div>
+          <AlertConfiguration serviceId={service.id} />
+        </div>
+      )}
     </div>
   );
 }

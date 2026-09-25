@@ -22,6 +22,14 @@ export interface ApiService {
   live?: boolean;
   /** Set when a live fetch was attempted but failed/needs setup — shown as a note, never hidden. */
   liveNote?: string;
+  /**
+   * True when the provider only reports discrete threshold crossings rather
+   * than a continuous number (Decodo on a datacenter plan: webhooks fire at
+   * 80% and 100%, nothing in between). Such a service has no usage history to
+   * chart and no thresholds of our own to configure, so the UI hides both
+   * instead of drawing a fabricated trend line.
+   */
+  thresholdOnly?: boolean;
 }
 
 export interface UsagePoint {

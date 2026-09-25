@@ -79,16 +79,18 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     });
   }, [hy1, setServices]);
 
-/** Pull live numbers for every service with a real provider wired up (currently: Decodo, Zyte, SadCaptcha). */
+/** Pull live numbers for every service with a real provider wired up (Decodo, Zyte, SadCaptcha, YouTube). */
   const fetchLiveData = useCallback(async () => {
-    const [decodoRes, zyteRes, sadcaptchaRes] = await Promise.allSettled([
+    const [decodoRes, zyteRes, sadcaptchaRes, googleRes] = await Promise.allSettled([
       fetch("/api/decodo", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/zyte", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/sadcaptcha", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/google", { cache: "no-store" }).then((r) => r.json()),
     ]);
     const decodo = decodoRes.status === "fulfilled" ? decodoRes.value : null;
     const zyte = zyteRes.status === "fulfilled" ? zyteRes.value : null;
     const sadcaptcha = sadcaptchaRes.status === "fulfilled" ? sadcaptchaRes.value : null;
+    const google = googleRes.status === "fulfilled" ? googleRes.value : null;
 
     setServices((prev) => prev.map((s) => {
       if (s.id === "decodo" && decodo?.configured) {
@@ -103,10 +105,17 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             live: true,
             // even a successful webhook read gets an explanatory note (threshold-only, not continuous)
             liveNote: decodo.mode === "webhook" ? decodo.message : undefined,
+            thresholdOnly: decodo.mode === "webhook",
           };
         }
         // Configured but not fully working yet (unsupported plan, field not set, no event yet) — say so, don't fake it.
-        return { ...s, renewalDate: decodo.renewalDate ?? s.renewalDate, liveNote: decodo.message ?? "Live fetch failed.", live: false };
+        return {
+          ...s,
+          renewalDate: decodo.renewalDate ?? s.renewalDate,
+          liveNote: decodo.message ?? "Live fetch failed.",
+          live: false,
+          thresholdOnly: decodo.mode === "webhook",
+        };
       }
       if (s.id === "zyte" && zyte?.configured) {
         if (zyte.ok) {
@@ -144,6 +153,20 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           };
         }
         return { ...s, liveNote: sadcaptcha.message ?? "Live fetch failed.", live: false };
+      }
+      if (s.id === "google" && google?.configured) {
+        if (google.ok) {
+          return {
+            ...s,
+            usage: google.usage,
+            limit: google.limit ?? s.limit,
+            unit: "units",
+            lastChecked: "just now",
+            live: true,
+            liveNote: "YouTube quota resets daily at midnight Pacific.",
+          };
+        }
+        return { ...s, liveNote: google.message ?? "Live fetch failed.", live: false };
       }
       return s;
     }));
