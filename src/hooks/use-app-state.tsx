@@ -214,26 +214,12 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         }
         return { ...s, liveNote: sadcaptcha.message ?? "Live fetch failed.", live: false, alertMode: "low-balance" };
       }
-      if (s.id === "google" && google?.configured) {
-        // PARKED (2026-09-28). The fetch itself works now that billing is
-        // active, but the metric is wrong — it reported 5,156,540 "units"
-        // against a 10,000/day cap. Deliberately NOT marked `live` and the
-        // number is NOT merged in: a green "Live data" badge over a wrong
-        // figure is worse than no figure, because it looks trustworthy.
-        // Also reset to the placeholder: a browser that merged the bad figure
-        // before this change still has it in localStorage, and simply not
-        // overwriting it would leave the wrong number on screen forever.
-        const seed = MOCK_SERVICES.find((m) => m.id === "google");
-        return {
-          ...s,
-          usage: seed?.usage ?? s.usage,
-          limit: seed?.limit ?? s.limit,
-          live: false,
-          liveNote: google.ok
-            ? "Paused — the Cloud Monitoring metric returns a figure far larger than the daily quota, so it isn't trustworthy yet. Showing the placeholder instead."
-            : google.message ?? "Live fetch failed.",
-        };
-      }
+      // The 2026-09-28 parking of YouTube was removed here on merge: it existed
+      // because the quota metric summed every sub-quota (5,156,540 against a
+      // 10,000/day cap), and the provider now pins quota_metric to
+      // "<service>/default", which is exactly that fix. Kept as one block —
+      // leaving the old one above this would have shadowed this code entirely,
+      // since the first matching branch returns.
       if (s.id === "google" && google?.configured) {
         if (google.ok) {
           return {
