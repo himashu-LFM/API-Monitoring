@@ -220,6 +220,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             : google.message ?? "Live fetch failed.",
         };
       }
+      if (s.id === "google" && google?.configured) {
+        if (google.ok) {
+          return {
+            ...s,
+            usage: google.usage,
+            limit: google.limit ?? s.limit,
+            unit: google.unit ?? "units",
+            lastChecked: "just now",
+            live: true,
+            liveNote: google.limit == null
+              ? "Couldn't auto-detect the daily quota limit — % is against a placeholder."
+              : undefined,
+          };
+        }
+        return { ...s, liveNote: google.message ?? "Live fetch failed.", live: false };
+      }
       return s;
     }));
     setLastUpdated(Date.now());
