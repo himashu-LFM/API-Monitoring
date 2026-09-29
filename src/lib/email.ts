@@ -29,11 +29,9 @@ function recipients(): string[] {
 }
 
 export function emailConfigured(): boolean {
-  return Boolean(
-    process.env.GMAIL_USER?.trim() &&
-    process.env.GMAIL_APP_PASSWORD?.trim() &&
-    recipients().length > 0,
-  );
+  // Recipients always include the hardcoded admin allowlist, so the only thing
+  // that can actually be missing is the Gmail credentials.
+  return Boolean(process.env.GMAIL_USER?.trim() && process.env.GMAIL_APP_PASSWORD?.trim());
 }
 
 export async function sendAlertEmail(subject: string, html: string, opts: SendOptions = {}): Promise<EmailResult> {
@@ -50,11 +48,14 @@ export async function sendAlertEmail(subject: string, html: string, opts: SendOp
     // SMTP_PORT / SMTP_SECURE) overrides it — e.g. a different provider or a
     // custom relay — without changing any code.
     const host = process.env.SMTP_HOST?.trim();
+    // `|| 587` (not `??`) so a blank SMTP_PORT falls back to 587 instead of
+    // becoming Number("") = 0.
+    const port = Number(process.env.SMTP_PORT?.trim() || 587);
     const transport = host
       ? nodemailer.createTransport({
           host,
-          port: Number(process.env.SMTP_PORT ?? 587),
-          secure: (process.env.SMTP_SECURE ?? "").toLowerCase() === "true" || process.env.SMTP_PORT === "465",
+          port,
+          secure: (process.env.SMTP_SECURE ?? "").toLowerCase() === "true" || port === 465,
           auth: { user, pass },
         })
       : nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
