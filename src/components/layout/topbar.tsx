@@ -5,8 +5,10 @@ import { Menu, RefreshCw, Search, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
+import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { useAppState } from "@/hooks/use-app-state";
+import { initialsFrom } from "@/lib/user-display";
 import { SidebarContent } from "./sidebar";
 import { NotificationDropdown } from "./notification-dropdown";
 import { ThemeToggle } from "./theme-toggle";
@@ -31,7 +33,10 @@ function relative(ts: number) {
 
 export function Topbar({ collapsed, onToggleCollapse }: { collapsed: boolean; onToggleCollapse: () => void }) {
   const pathname = usePathname();
-  const { lastUpdated, refreshing, refresh, hydrated, account } = useAppState();
+  const { lastUpdated, refreshing, refresh, hydrated } = useAppState();
+  const { data: session } = useSession();
+  const userName = session?.user?.name ?? "Account";
+  const initials = initialsFrom(session?.user?.name, session?.user?.email);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const meta = pathname.startsWith("/apis/") && pathname !== "/apis"
@@ -81,8 +86,8 @@ export function Topbar({ collapsed, onToggleCollapse }: { collapsed: boolean; on
         <NotificationDropdown />
         <ThemeToggle />
 
-        <span className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-rose-500 text-xs font-semibold text-white" title={account.name}>
-          {account.name.split(" ").map((s) => s[0]).slice(0, 2).join("")}
+        <span className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-rose-500 text-xs font-semibold text-white" title={userName}>
+          {initials}
         </span>
       </div>
     </header>
