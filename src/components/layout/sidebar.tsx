@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Settings, LogOut } from "lucide-react";
+import { Activity, LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -60,22 +60,6 @@ export function SidebarContent({ collapsed = false, onNavigate }: { collapsed?: 
       </nav>
 
       <div className="mt-auto border-t px-3 py-3">
-        <Link
-          href="/settings"
-          onClick={onNavigate}
-          title={collapsed ? "Settings" : undefined}
-          aria-current={pathname === "/settings" ? "page" : undefined}
-          className={cn(
-            "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-            "text-muted-foreground hover:bg-accent hover:text-foreground",
-            pathname === "/settings" && "bg-accent text-foreground",
-            collapsed && "justify-center px-2",
-          )}
-        >
-          <Settings className="size-4 shrink-0" />
-          {!collapsed && <span>Settings</span>}
-        </Link>
-
         <button
           type="button"
           onClick={() => signOut({ callbackUrl: "/login" })}

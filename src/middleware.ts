@@ -4,7 +4,7 @@ import authConfig from "./auth.config";
 const { auth } = NextAuth(authConfig);
 
 // Routes only ADMINs may see. Everything under these prefixes is admin-gated.
-const ADMIN_PREFIXES = ["/dashboard", "/apis", "/alerts", "/renewals", "/settings"];
+const ADMIN_PREFIXES = ["/dashboard", "/apis", "/alerts", "/renewals"];
 
 export default auth((req) => {
   const { nextUrl } = req;

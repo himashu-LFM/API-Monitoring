@@ -31,12 +31,19 @@ export function ApisView() {
     let list = services.filter((s) =>
       (s.name + s.provider).toLowerCase().includes(q.toLowerCase()),
     );
-    if (status !== "all") list = list.filter((s) => getUsageStatus(pct(s.usage, s.limit)) === status);
+    // A service with no measured numbers has no status yet, so it can't match
+    // one — it stays out of a filtered view rather than being counted healthy.
+    if (status !== "all") {
+      list = list.filter((s) => s.usage != null && s.limit != null && getUsageStatus(pct(s.usage, s.limit)) === status);
+    }
     if (provider !== "all") list = list.filter((s) => s.provider === provider);
     list = [...list].sort((a, b) => {
       if (sort === "name") return a.name.localeCompare(b.name);
       if (sort === "renewal") return daysUntil(a.renewalDate) - daysUntil(b.renewalDate);
-      return pct(b.usage, b.limit) - pct(a.usage, a.limit);
+      // Unmeasured services sort last instead of pretending to be at 0%.
+      const ap = a.usage != null && a.limit != null ? pct(a.usage, a.limit) : -1;
+      const bp = b.usage != null && b.limit != null ? pct(b.usage, b.limit) : -1;
+      return bp - ap;
     });
     return list;
   }, [services, q, status, provider, sort]);

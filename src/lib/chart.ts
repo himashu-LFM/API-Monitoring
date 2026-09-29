@@ -1,5 +1,4 @@
 import type { ApiService } from "./types";
-import { MOCK_USAGE_HISTORY } from "./mock-data";
 import { today, fmtDateShort, pct } from "./format";
 import type { ChartSeries } from "@/components/charts/usage-chart";
 
@@ -40,16 +39,26 @@ function realCumulativeValues(service: ApiService, days: number): (number | null
   return rangeDates(days).map((date) => {
     if (!first || date < first) return null;
     running += byDate.get(date) ?? 0; // a day the provider skipped means no spend
-    return pct(running, service.limit);
+    return service.limit ? pct(running, service.limit) : null;
   });
 }
 
-/** Usage-% values for one service over the last `days` days (flat line if no history). */
+/**
+ * Usage-% values for one service over the last `days` days.
+ *
+ * Only services that report REAL per-day history get a line. There used to be
+ * two fallbacks here — a seeded random walk, and a flat line at the current
+ * percentage — and both drew a trend that was never measured. Returning nulls
+ * lets the caller show "no history" instead of inventing one.
+ */
 export function usageValues(service: ApiService, days: number): (number | null)[] {
   if (service.dailyUsage?.length) return realCumulativeValues(service, days);
-  const hist = MOCK_USAGE_HISTORY[service.id];
-  if (hist) return hist.slice(-days).map((p) => p.value);
-  return Array(days).fill(pct(service.usage, service.limit));
+  return Array(days).fill(null);
+}
+
+/** True when this service has real measured history to plot. */
+export function hasUsageHistory(service: ApiService): boolean {
+  return !!service.dailyUsage?.length;
 }
 
 /** Build chart series for "all" services or a single selected id. */
