@@ -1,17 +1,17 @@
 import "server-only";
-import { promises as fs } from "fs";
-import path from "path";
+import { readBlob, writeBlob } from "./store";
 
 /**
- * Minimal file-backed store for incoming Decodo webhook events.
+ * Stores the latest incoming Decodo webhook event.
  * Datacenter/ISP proxies aren't covered by Decodo's REST API at all
- * (confirmed in their docs), so webhooks are the only real signal we
- * can get for those — this just persists the latest one so a server
- * restart during dev doesn't lose it. Swap for a real DB later if you
- * need history instead of "latest event only".
+ * (confirmed in their docs), so webhooks are the only real signal we can get
+ * for those. Persisted through `store.ts`, which means a local file in dev and
+ * Upstash Redis on a deployed (serverless) host — a webhook only arrives every
+ * few days, so it must survive far longer than one container's lifetime.
+ * Latest event only; swap for a list if you ever need history.
  */
 
-const FILE = path.join(process.cwd(), ".data", "decodo-webhook.json");
+const NAME = "decodo-webhook";
 
 export interface DecodoWebhookEvent {
   eventName: string;
@@ -22,15 +22,9 @@ export interface DecodoWebhookEvent {
 }
 
 export async function saveDecodoWebhookEvent(event: DecodoWebhookEvent): Promise<void> {
-  await fs.mkdir(path.dirname(FILE), { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(event, null, 2), "utf8");
+  await writeBlob(NAME, event);
 }
 
 export async function readDecodoWebhookEvent(): Promise<DecodoWebhookEvent | null> {
-  try {
-    const raw = await fs.readFile(FILE, "utf8");
-    return JSON.parse(raw) as DecodoWebhookEvent;
-  } catch {
-    return null;
-  }
+  return readBlob<DecodoWebhookEvent>(NAME);
 }

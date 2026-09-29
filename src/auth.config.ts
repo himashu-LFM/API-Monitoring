@@ -11,6 +11,10 @@ import type { NextAuthConfig } from "next-auth";
 export const ALLOWED_DOMAIN = "listenfirstmedia.com";
 
 export default {
+  // NextAuth auto-trusts the host only on Vercel. On Netlify it doesn't, and
+  // without this every sign-in fails with UntrustedHost. AUTH_URL still pins the
+  // canonical URL used to build the OAuth callback.
+  trustHost: true,
   providers: [Google],
   session: { strategy: "jwt" },
   pages: { signIn: "/login" },
