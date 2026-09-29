@@ -1,9 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { LayoutGrid, List, Plus, Search, Layers } from "lucide-react";
+import { LayoutGrid, List, Search, Layers } from "lucide-react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -12,7 +11,6 @@ import { cn } from "@/lib/utils";
 import { useAppState } from "@/hooks/use-app-state";
 import { ApiTable } from "./api-table";
 import { ApiCard } from "./api-card";
-import { AddApiModal } from "./add-api-modal";
 import { EmptyState } from "@/components/common/states";
 import { getUsageStatus } from "@/lib/status";
 import { pct, daysUntil } from "@/lib/format";
@@ -88,13 +86,12 @@ export function ApisView() {
               <LayoutGrid className="size-4" />
             </button>
           </div>
-          <AddApiModal trigger={<Button className="gap-2"><Plus className="size-4" />Add API</Button>} />
         </div>
       </div>
 
       {filtered.length === 0 ? (
         <Card>
-          <EmptyState icon={Layers} title="No APIs match your filters" description="Try clearing search or filters, or add a new API." />
+          <EmptyState icon={Layers} title="No APIs match your filters" description="Try clearing the search box or resetting the filters." />
         </Card>
       ) : view === "table" ? (
         <Card className="py-0"><ApiTable services={filtered} /></Card>

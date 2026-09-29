@@ -115,21 +115,12 @@ async function gather(): Promise<{ checked: CheckedService[]; cycleKeys: string[
   // Decodo on datacenter only reports 80%/100% webhook crossings; when that's
   // all we have, `usageGb` is already a percentage against limitGb=100.
   add("decodo", "Decodo", decodo.mode === "webhook" ? "%" : "GB", decodo.ok, decodo.configured, decodo.usageGb, decodo.limitGb, decodo.renewalDate, decodo.message);
-  // YouTube is PARKED (2026-09-28). Billing finally activated and Cloud
-  // Monitoring now returns data, but the metric is wrong: it reported 5,156,540
-  // "units" against a 10,000/day cap — 51,565% — which fired a meaningless 100%
-  // alert. `serviceruntime.../quota/rate/net_usage` filtered only by service is
-  // evidently summing something other than YouTube Data API quota units.
-  //
-  // Reported here so it stays visible on the dashboard, but deliberately given
-  // no cycleKey and no threshold evaluation, so it cannot email until the metric
-  // is corrected. Zyte / Decodo / SadCaptcha are unaffected.
+  // YouTube quota resets DAILY at midnight PT — use the PT date as the cycle key
+  // so the "one email per threshold per cycle" dedup resets every day.
+  // (Un-parked on merge: the provider now pins quota_metric to
+  // "<service>/default", fixing the inflated figure that forced the pause.)
   const ptDay = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
-  checked.push({
-    id: "google", name: "YouTube", unit: "units", cycleKey: ptDay,
-    usage: google.usage ?? null, limit: google.limit ?? null, percent: null,
-    skipped: "parked — Cloud Monitoring metric is wrong (see comment in gather())",
-  });
+  add("google", "YouTube", "units", google.ok, google.configured, google.usage, google.limit, ptDay, google.message);
 
   return { checked, cycleKeys };
 }
