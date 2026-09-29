@@ -22,6 +22,27 @@ export interface ApiService {
   live?: boolean;
   /** Set when a live fetch was attempted but failed/needs setup — shown as a note, never hidden. */
   liveNote?: string;
+  /**
+   * How this service alerts — which also decides what the detail page can
+   * honestly show. When set, there is no real usage history to chart and no
+   * percentage thresholds of ours to configure, so the UI hides both rather
+   * than drawing a fabricated trend line:
+   *
+   *  - "fixed-webhook": the provider only pings at its own fixed points
+   *    (Decodo on datacenter: 80% and 100%, nothing in between).
+   *  - "low-balance": prepaid credits with no history endpoint (SadCaptcha);
+   *    the alert fires when the remaining balance drops below a floor.
+   *
+   * Unset means normal percentage thresholds, with chart and config shown.
+   */
+  alertMode?: "fixed-webhook" | "low-balance";
+  /**
+   * Real per-day usage for the CURRENT billing cycle, oldest first, measured by
+   * the provider (Zyte's stats API groups by day). `value` is in the service's
+   * own `unit`, not a percentage — the chart accumulates it against `limit`.
+   * When present the chart plots this instead of a synthesized trend.
+   */
+  dailyUsage?: { date: string; value: number }[];
 }
 
 export interface UsagePoint {

@@ -2,8 +2,13 @@ import "server-only";
 import { fetchZyteUsage } from "./providers/zyte";
 import { fetchSadCaptchaUsage } from "./providers/sadcaptcha";
 import { fetchDecodoUsage } from "./providers/decodo";
+import { fetchGoogleUsage } from "./providers/google";
 import { sendAlertEmail, emailConfigured } from "./email";
 import { highestNotified, recordNotified, pruneOldCycles } from "./alert-state";
+import { LOW_BALANCE_FLOOR } from "./alert-rules";
+
+/** Stand-in cycle key for balance-based services, which have no billing cycle. */
+const LOW_BALANCE_CYCLE = "lowbalance";
 
 /**
  * Server-side usage-threshold checker.
@@ -26,6 +31,14 @@ export interface CheckedService {
   /** threshold just crossed and emailed on this run, if any */
   firedThreshold?: number;
   skipped?: string;
+  /**
+   * Set for prepaid-credit services (SadCaptcha) that are judged on the balance
+   * left rather than a percentage of a cycle. `remaining` is the live balance
+   * and `firedLowBalance` marks the run that emailed about it.
+   */
+  rule?: "low-balance";
+  remaining?: number | null;
+  firedLowBalance?: boolean;
 }
 
 export interface CheckResult {
@@ -57,10 +70,11 @@ function cycleKey(renewalDate?: string): string {
 }
 
 async function gather(): Promise<{ checked: CheckedService[]; cycleKeys: string[] }> {
-  const [zyte, sad, decodo] = await Promise.all([
+  const [zyte, sad, decodo, google] = await Promise.all([
     fetchZyteUsage(),
     fetchSadCaptchaUsage(),
     fetchDecodoUsage(),
+    fetchGoogleUsage(),
   ]);
 
   const checked: CheckedService[] = [];
@@ -83,21 +97,59 @@ async function gather(): Promise<{ checked: CheckedService[]; cycleKeys: string[
   };
 
   add("zyte", "Zyte", "$", zyte.ok, zyte.configured, zyte.usage, zyte.limit, zyte.renewalDate, zyte.message);
-  add("sadcaptcha", "SadCaptcha", "credits", sad.ok, sad.configured, sad.usage, sad.limit, undefined, sad.message);
+
+  // SadCaptcha credits are prepaid and never expire, so there is no cycle to be
+  // a percentage of — it's judged purely on the balance left. LOW_BALANCE_CYCLE
+  // is a constant "cycle" so the existing dedup store can hold its one record.
+  cycleKeys.push(LOW_BALANCE_CYCLE);
+  checked.push({
+    id: "sadcaptcha", name: "SadCaptcha", unit: "credits",
+    cycleKey: LOW_BALANCE_CYCLE, rule: "low-balance",
+    usage: sad.usage ?? null, limit: sad.limit ?? null, percent: null,
+    remaining: sad.remaining ?? null,
+    skipped: !sad.configured ? "not configured"
+      : !sad.ok || sad.remaining == null ? (sad.message || "no usable credit balance")
+      : undefined,
+  });
+
   // Decodo on datacenter only reports 80%/100% webhook crossings; when that's
   // all we have, `usageGb` is already a percentage against limitGb=100.
   add("decodo", "Decodo", decodo.mode === "webhook" ? "%" : "GB", decodo.ok, decodo.configured, decodo.usageGb, decodo.limitGb, decodo.renewalDate, decodo.message);
+  // YouTube is PARKED (2026-09-28). Billing finally activated and Cloud
+  // Monitoring now returns data, but the metric is wrong: it reported 5,156,540
+  // "units" against a 10,000/day cap — 51,565% — which fired a meaningless 100%
+  // alert. `serviceruntime.../quota/rate/net_usage` filtered only by service is
+  // evidently summing something other than YouTube Data API quota units.
+  //
+  // Reported here so it stays visible on the dashboard, but deliberately given
+  // no cycleKey and no threshold evaluation, so it cannot email until the metric
+  // is corrected. Zyte / Decodo / SadCaptcha are unaffected.
+  const ptDay = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
+  checked.push({
+    id: "google", name: "YouTube", unit: "units", cycleKey: ptDay,
+    usage: google.usage ?? null, limit: google.limit ?? null, percent: null,
+    skipped: "parked — Cloud Monitoring metric is wrong (see comment in gather())",
+  });
 
   return { checked, cycleKeys };
 }
 
 function renderEmail(fired: CheckedService[]): { subject: string; html: string } {
   const worst = fired.reduce((a, b) => ((b.percent ?? 0) > (a.percent ?? 0) ? b : a));
-  const subject = fired.length === 1
-    ? `API Monitor: ${worst.name} reached ${worst.firedThreshold}% usage`
-    : `API Monitor: ${fired.length} services crossed a usage threshold`;
+  const single = fired[0];
+  const subject = fired.length > 1
+    ? `API Monitor: ${fired.length} services need attention`
+    : single.firedLowBalance
+      ? `API Monitor: ${single.name} is down to ${(single.remaining ?? 0).toLocaleString()} credits`
+      : `API Monitor: ${worst.name} reached ${worst.firedThreshold}% usage`;
 
-  const rows = fired.map((s) => `
+  const rows = fired.map((s) => s.firedLowBalance ? `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee;font-weight:600">${s.name}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee">${(s.remaining ?? 0).toLocaleString()} ${s.unit} left</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee;color:#5b616e">prepaid credits, no expiry</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee;color:#b91c1c;font-weight:600">below ${LOW_BALANCE_FLOOR.toLocaleString()}</td>
+    </tr>` : `
     <tr>
       <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee;font-weight:600">${s.name}</td>
       <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee">${s.percent}% used</td>
@@ -110,7 +162,7 @@ function renderEmail(fired: CheckedService[]): { subject: string; html: string }
 
   const html = `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:600px">
-    <h2 style="margin:0 0 4px">Usage threshold reached</h2>
+    <h2 style="margin:0 0 4px">${fired.every((s) => s.firedLowBalance) ? "Credit balance running low" : "Usage threshold reached"}</h2>
     <p style="margin:0 0 16px;color:#5b616e">Checked ${new Date().toUTCString()}</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px">
       <thead><tr>
@@ -122,7 +174,8 @@ function renderEmail(fired: CheckedService[]): { subject: string; html: string }
       <tbody>${rows}</tbody>
     </table>
     <p style="margin:20px 0 0;color:#8a909c;font-size:12px">
-      You'll only get one email per threshold per billing cycle.
+      You'll only get one email per threshold per billing cycle — and for prepaid
+      credits, one email per drop below the floor, re-armed after a top-up.
     </p>
   </div>`;
 
@@ -134,6 +187,21 @@ export async function runUsageCheck(): Promise<CheckResult> {
   const fired: CheckedService[] = [];
 
   for (const s of checked) {
+    if (s.rule === "low-balance") {
+      if (s.remaining == null) continue;
+      const armed = (await highestNotified(s.id, s.cycleKey)) === 0;
+      if (s.remaining < LOW_BALANCE_FLOOR) {
+        // Only the run that crosses the floor mails; later runs stay quiet until
+        // a top-up puts the balance back above it and re-arms the rule.
+        if (!armed) continue;
+        s.firedLowBalance = true;
+        fired.push(s); // recorded after a successful send, below
+      } else if (!armed) {
+        await recordNotified(s.id, s.cycleKey, 0); // topped up — re-arm
+      }
+      continue;
+    }
+
     if (s.percent == null) continue;
     const hit = crossedThreshold(s.percent);
     if (hit === 0) continue;
@@ -143,7 +211,6 @@ export async function runUsageCheck(): Promise<CheckResult> {
 
     s.firedThreshold = hit;
     fired.push(s);
-    await recordNotified(s.id, s.cycleKey, hit);
   }
 
   await pruneOldCycles(cycleKeys);
@@ -157,5 +224,17 @@ export async function runUsageCheck(): Promise<CheckResult> {
 
   const { subject, html } = renderEmail(fired);
   const res = await sendAlertEmail(subject, html);
+
+  // Record ONLY after the mail actually left. Recording before sending meant a
+  // failed or unconfigured send still marked the threshold as "notified", so it
+  // could never be retried and the alert was silently lost for the whole cycle.
+  // Staying unrecorded means the next run retries — a duplicate mail is a far
+  // cheaper failure than a missed one.
+  if (res.sent) {
+    for (const s of fired) {
+      await recordNotified(s.id, s.cycleKey, s.firedLowBalance ? 1 : s.firedThreshold!);
+    }
+  }
+
   return { checkedAt: new Date().toISOString(), services: checked, emailSent: res.sent, emailMessage: res.message };
 }

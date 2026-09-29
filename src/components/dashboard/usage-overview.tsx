@@ -39,10 +39,15 @@ export function UsageOverview() {
   const [selected, setSelected] = useState<string>("all");
   const [days, setDays] = useState<number>(30);
 
-  const labels = useMemo(() => rangeLabels(days), [days]);
-  const series = useMemo(() => buildUsageSeries(services, selected, days), [services, selected, days]);
+  // Services with a special alert mode have no real history to plot —
+  // Decodo reports nothing between its 80%/100% webhooks, SadCaptcha has no
+  // history endpoint at all. Charting them would mean inventing the line.
+  const chartable = useMemo(() => services.filter((s) => !s.alertMode), [services]);
 
-  const apiOptions = [{ label: "All APIs", value: "all" }, ...services.map((s) => ({ label: s.name, value: s.id }))];
+  const labels = useMemo(() => rangeLabels(days), [days]);
+  const series = useMemo(() => buildUsageSeries(chartable, selected, days), [chartable, selected, days]);
+
+  const apiOptions = [{ label: "All APIs", value: "all" }, ...chartable.map((s) => ({ label: s.name, value: s.id }))];
 
   return (
     <Card>

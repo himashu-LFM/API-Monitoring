@@ -18,7 +18,16 @@ import { nextRenewalOnOrAfter, currentPeriodStart } from "@/lib/format";
  *        }]
  *      }
  *   With no groupby_* params, `results` is a single row summarizing the
- *   whole date range — `request_count` is the usage number we want.
+ *   whole date range. We pass `groupby_time=day` instead, which returns one
+ *   row PER DAY (each with an extra `day` field, ISO with a +00:00 offset) —
+ *   verified live 2026-09-25. That costs nothing extra: it is the same single
+ *   request, just grouped, so the 20 req/min limit is unaffected, and this
+ *   stats host is not the billed one (billing is on api.zyte.com scraping
+ *   requests — this endpoint only reports that spend).
+ *
+ *   The cycle total is then the sum of those rows, and the same rows give the
+ *   detail page a REAL usage history instead of a synthesized flat line.
+ *   Note `cost_microusd_total` arrives as a STRING, so it must be parsed.
  *
  * Auth: HTTP Basic, username = your Zyte *dashboard/stats* API key
  * (docs are explicit that this is NOT the same as the Zyte API key you
@@ -35,12 +44,21 @@ import { nextRenewalOnOrAfter, currentPeriodStart } from "@/lib/format";
 
 const BASE = "https://zyte-api-stats.zyte.com";
 
+/** One real day of Zyte spend, straight from the stats API. */
+export interface ZyteDay {
+  date: string;    // yyyy-mm-dd (UTC)
+  usd: number;     // spend that day
+  requests: number;
+}
+
 export interface ZyteUsageResult {
   ok: boolean;
   configured: boolean;
   usage?: number; // USD spent over the window
   limit?: number; // USD budget (yours, or your Zyte Spending Alert amount)
   renewalDate?: string;
+  /** Per-day spend for this cycle, oldest first — measured, not interpolated. */
+  history?: ZyteDay[];
   message?: string;
 }
 
@@ -59,14 +77,20 @@ export async function fetchZyteUsage(): Promise<ZyteUsageResult> {
   // Prefer "since this billing cycle started" over a fixed rolling window —
   // a plain last-30-days window bleeds into the previous cycle whenever the
   // cycle just started (e.g. only 13 days into a 30-day month).
-  const start = anchor
+  const cycleStart = anchor
     ? new Date(currentPeriodStart(anchor, cycle) + "T00:00:00Z")
     : new Date(end.getTime() - 30 * 86400000);
+
+  // Deliberately still only the current cycle: the chart plots spend as a
+  // percentage of the cycle's budget, so days from a previous cycle would be
+  // measured against the wrong denominator.
+  const start = cycleStart;
 
   const auth = "Basic " + Buffer.from(apiKey + ":").toString("base64");
   const url = `${BASE}/api/stats?organization_id=${encodeURIComponent(orgId)}`
     + `&start_time=${encodeURIComponent(start.toISOString())}`
-    + `&end_time=${encodeURIComponent(end.toISOString())}`;
+    + `&end_time=${encodeURIComponent(end.toISOString())}`
+    + `&groupby_time=day`;
 
   try {
     const res = await fetch(url, { headers: { Authorization: auth }, cache: "no-store" });
@@ -77,13 +101,32 @@ export async function fetchZyteUsage(): Promise<ZyteUsageResult> {
       return { ok: false, configured: true, limit, renewalDate, message: `Zyte stats API returned HTTP ${res.status}` };
     }
     const data = await res.json();
-    const row = Array.isArray(data?.results) ? data.results[0] : undefined;
-    const costMicroUsd = Number(row?.cost_microusd_total);
-    if (!Number.isFinite(costMicroUsd)) {
-      return { ok: false, configured: true, limit, renewalDate, message: "Zyte response had no cost_microusd_total for this window (or an unexpected shape)." };
+    const rows: unknown[] = Array.isArray(data?.results) ? data.results : [];
+    if (rows.length === 0) {
+      return { ok: false, configured: true, limit, renewalDate, message: "Zyte returned no rows for this window (or an unexpected shape)." };
     }
-    const usage = Math.round((costMicroUsd / 1_000_000) * 100) / 100; // USD
-    return { ok: true, configured: true, usage, limit, renewalDate };
+
+    const history: ZyteDay[] = [];
+    let totalMicroUsd = 0;
+    for (const r of rows as Record<string, unknown>[]) {
+      const micro = Number(r.cost_microusd_total); // arrives as a string
+      const day = typeof r.day === "string" ? r.day.slice(0, 10) : null;
+      if (!day || !Number.isFinite(micro)) continue;
+      totalMicroUsd += micro; // summed raw, so the total isn't the sum of 15 roundings
+      history.push({
+        date: day,
+        usd: Math.round((micro / 1_000_000) * 100) / 100,
+        requests: Number(r.request_count) || 0,
+      });
+    }
+    if (history.length === 0) {
+      return { ok: false, configured: true, limit, renewalDate, message: "Zyte rows had no usable day/cost_microusd_total values." };
+    }
+    history.sort((a, b) => a.date.localeCompare(b.date));
+
+    const usage = Math.round((totalMicroUsd / 1_000_000) * 100) / 100;
+
+    return { ok: true, configured: true, usage, limit, renewalDate, history };
   } catch (e) {
     return { ok: false, configured: true, limit, renewalDate, message: "Zyte request failed: " + (e as Error).message };
   }

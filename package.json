@@ -5,20 +5,15 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
-    "db:migrate": "dotenv -e .env.local -- prisma migrate dev",
-    "db:generate": "prisma generate",
-    "db:studio": "dotenv -e .env.local -- prisma studio",
-    "db:push": "dotenv -e .env.local -- prisma db push"
+    "start": "next start"
   },
   "dependencies": {
-    "@auth/prisma-adapter": "^2.11.3",
     "@base-ui/react": "^1.8.0",
     "@hookform/resolvers": "^5.9.1",
-    "@prisma/client": "^6.19.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cn": "^0.4.0",
+    "google-auth-library": "^11.1.0",
     "lucide-react": "^1.47.0",
     "next": "^15.1.6",
     "next-auth": "^5.0.0-beta.32",
@@ -43,7 +38,6 @@
     "@types/react-dom": "^19.0.3",
     "dotenv-cli": "^11.0.0",
     "postcss": "^8.5.28",
-    "prisma": "^6.19.3",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.7.3"
   }

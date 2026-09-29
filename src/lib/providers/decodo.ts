@@ -1,6 +1,6 @@
 import "server-only";
 import { readDecodoWebhookEvent } from "@/lib/webhook-store";
-import { nextRenewalOnOrAfter } from "@/lib/format";
+import { nextRenewalOnOrAfter, currentPeriodStart } from "@/lib/format";
 
 /**
  * Real Decodo integration (server-side only — never import this from a
@@ -31,7 +31,7 @@ import { nextRenewalOnOrAfter } from "@/lib/format";
  *   including datacenter. We receive a `traffic_usage` event (fires at
  *   80% and 100%) at /api/webhooks/decodo/[token] and read the latest
  *   one here. There's no renewal-date webhook, so renewal stays manual
- *   (DECODO_RENEWAL), same as Hootsuite's renewal-only handling.
+ *   (DECODO_RENEWAL).
  *
  * Auth: `Authorization: <API_KEY>` header, no Bearer/Basic prefix
  * (confirmed by Decodo's own curl example).
@@ -169,6 +169,19 @@ async function fetchViaWebhook(): Promise<DecodoUsageResult> {
       ok: false, configured: true, mode: "webhook",
       renewalDate,
       message: "Webhook is configured but no event has arrived yet. Decodo only sends `traffic_usage` at 80% and 100% — this won't show live numbers in between, only the last threshold crossed.",
+    };
+  }
+
+  // A webhook only describes the cycle it was sent in. Decodo's traffic resets
+  // at renewal, but the stored event doesn't disappear — so without this check
+  // last cycle's "80%" kept being reported as if it were current, and even
+  // re-fired a threshold alert days after the reset.
+  const periodStart = anchor ? currentPeriodStart(anchor, cycle) : undefined;
+  const stale = periodStart != null && event.receivedAt < periodStart + "T00:00:00.000Z";
+  if (stale) {
+    return {
+      ok: false, configured: true, mode: "webhook", renewalDate,
+      message: `Traffic reset on ${periodStart} and Decodo hasn't sent a webhook since — the last one (${event.usagePercent ?? "?"}% on ${event.receivedAt.slice(0, 10)}) belongs to the previous cycle. Datacenter plans stay silent until 80%, so no news here means under 80%.`,
     };
   }
 

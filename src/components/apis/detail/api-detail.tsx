@@ -14,6 +14,7 @@ import { useAppState } from "@/hooks/use-app-state";
 import { getUsageStatus } from "@/lib/status";
 import { pct, fmtNum, fmtDate, daysUntil } from "@/lib/format";
 import { rangeLabels, usageValues } from "@/lib/chart";
+import { LOW_BALANCE_FLOOR } from "@/lib/alert-rules";
 
 export function ApiDetail({ id }: { id: string }) {
   const { services } = useAppState();
@@ -25,7 +26,9 @@ export function ApiDetail({ id }: { id: string }) {
   const series = useMemo(() => {
     if (!service) return [];
     const base = usageValues(service, days);
-    const data = tab === "remaining" ? base.map((v) => Math.round((100 - v) * 10) / 10) : base;
+    const data = tab === "remaining"
+      ? base.map((v) => (v == null ? null : Math.round((100 - v) * 10) / 10))
+      : base;
     return [{ id: service.id, name: `${service.name} ${tab}`, color: service.color, data }];
   }, [service, days, tab]);
 
@@ -96,22 +99,65 @@ export function ApiDetail({ id }: { id: string }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-            <CardTitle className="text-base">Usage history</CardTitle>
-            <div className="flex items-center gap-2">
-              <Segmented options={[{ label: "Usage", value: "usage" }, { label: "Remaining", value: "remaining" }]} value={tab} onChange={setTab} />
-              <Segmented options={[{ label: "7D", value: 7 }, { label: "30D", value: 30 }, { label: "90D", value: 90 }]} value={days} onChange={setDays} />
-            </div>
+      {service.alertMode ? (
+        // Nothing honest to chart and nothing of ours to configure. Either the
+        // provider only speaks at its own fixed points, or it gives a single
+        // current number with no history endpoint — a trend line would be invented
+        // and our own 50/75% settings could never fire correctly.
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">
+              {service.alertMode === "fixed-webhook" ? "Threshold alerts only" : "Low-balance alert only"}
+            </CardTitle>
           </CardHeader>
-          <CardContent>
-            <UsageChart labels={labels} series={series} showThresholds={tab === "usage"} />
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            {service.alertMode === "fixed-webhook" ? (
+              <>
+                <p>
+                  {service.name} reports usage by webhook when it crosses{" "}
+                  <span className="font-medium text-foreground">80%</span> and{" "}
+                  <span className="font-medium text-foreground">100%</span> — there is no
+                  continuous figure in between, so there is no usage history to chart.
+                </p>
+                <p>
+                  Alert thresholds aren&apos;t configurable here either: the 80/100% points are
+                  fixed by {service.name}, not by this dashboard.
+                </p>
+              </>
+            ) : (
+              <>
+                <p>
+                  {service.name} only exposes the credits remaining right now — there is no
+                  history endpoint, so any trend line here would be made up rather than measured.
+                </p>
+                <p>
+                  Instead of percentage thresholds, this service emails once when the balance
+                  drops below{" "}
+                  <span className="font-medium text-foreground">{fmtNum(LOW_BALANCE_FLOOR)}</span>{" "}
+                  credits, and re-arms after a top-up.
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <Card className="lg:col-span-2">
+            <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
+              <CardTitle className="text-base">Usage history</CardTitle>
+              <div className="flex items-center gap-2">
+                <Segmented options={[{ label: "Usage", value: "usage" }, { label: "Remaining", value: "remaining" }]} value={tab} onChange={setTab} />
+                <Segmented options={[{ label: "7D", value: 7 }, { label: "30D", value: 30 }, { label: "90D", value: 90 }]} value={days} onChange={setDays} />
+              </div>
+            </CardHeader>
+            <CardContent>
+              <UsageChart labels={labels} series={series} showThresholds={tab === "usage"} />
+            </CardContent>
+          </Card>
 
-        <AlertConfiguration serviceId={service.id} />
-      </div>
+          <AlertConfiguration serviceId={service.id} />
+        </div>
+      )}
     </div>
   );
 }
