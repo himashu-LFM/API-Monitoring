@@ -26,7 +26,9 @@ export function ApiDetail({ id }: { id: string }) {
   const series = useMemo(() => {
     if (!service) return [];
     const base = usageValues(service, days);
-    const data = tab === "remaining" ? base.map((v) => Math.round((100 - v) * 10) / 10) : base;
+    const data = tab === "remaining"
+      ? base.map((v) => (v == null ? null : Math.round((100 - v) * 10) / 10))
+      : base;
     return [{ id: service.id, name: `${service.name} ${tab}`, color: service.color, data }];
   }, [service, days, tab]);
 

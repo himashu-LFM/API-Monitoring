@@ -115,10 +115,21 @@ async function gather(): Promise<{ checked: CheckedService[]; cycleKeys: string[
   // Decodo on datacenter only reports 80%/100% webhook crossings; when that's
   // all we have, `usageGb` is already a percentage against limitGb=100.
   add("decodo", "Decodo", decodo.mode === "webhook" ? "%" : "GB", decodo.ok, decodo.configured, decodo.usageGb, decodo.limitGb, decodo.renewalDate, decodo.message);
-  // YouTube quota resets DAILY at midnight PT — use the PT date as the cycle key
-  // so the "one email per threshold per cycle" dedup resets every day.
+  // YouTube is PARKED (2026-09-28). Billing finally activated and Cloud
+  // Monitoring now returns data, but the metric is wrong: it reported 5,156,540
+  // "units" against a 10,000/day cap — 51,565% — which fired a meaningless 100%
+  // alert. `serviceruntime.../quota/rate/net_usage` filtered only by service is
+  // evidently summing something other than YouTube Data API quota units.
+  //
+  // Reported here so it stays visible on the dashboard, but deliberately given
+  // no cycleKey and no threshold evaluation, so it cannot email until the metric
+  // is corrected. Zyte / Decodo / SadCaptcha are unaffected.
   const ptDay = new Date().toLocaleDateString("en-CA", { timeZone: "America/Los_Angeles" });
-  add("google", "YouTube", "units", google.ok, google.configured, google.usage, google.limit, ptDay, google.message);
+  checked.push({
+    id: "google", name: "YouTube", unit: "units", cycleKey: ptDay,
+    usage: google.usage ?? null, limit: google.limit ?? null, percent: null,
+    skipped: "parked — Cloud Monitoring metric is wrong (see comment in gather())",
+  });
 
   return { checked, cycleKeys };
 }
@@ -184,8 +195,7 @@ export async function runUsageCheck(): Promise<CheckResult> {
         // a top-up puts the balance back above it and re-arms the rule.
         if (!armed) continue;
         s.firedLowBalance = true;
-        fired.push(s);
-        await recordNotified(s.id, s.cycleKey, 1);
+        fired.push(s); // recorded after a successful send, below
       } else if (!armed) {
         await recordNotified(s.id, s.cycleKey, 0); // topped up — re-arm
       }
@@ -201,7 +211,6 @@ export async function runUsageCheck(): Promise<CheckResult> {
 
     s.firedThreshold = hit;
     fired.push(s);
-    await recordNotified(s.id, s.cycleKey, hit);
   }
 
   await pruneOldCycles(cycleKeys);
@@ -215,5 +224,17 @@ export async function runUsageCheck(): Promise<CheckResult> {
 
   const { subject, html } = renderEmail(fired);
   const res = await sendAlertEmail(subject, html);
+
+  // Record ONLY after the mail actually left. Recording before sending meant a
+  // failed or unconfigured send still marked the threshold as "notified", so it
+  // could never be retried and the alert was silently lost for the whole cycle.
+  // Staying unrecorded means the next run retries — a duplicate mail is a far
+  // cheaper failure than a missed one.
+  if (res.sent) {
+    for (const s of fired) {
+      await recordNotified(s.id, s.cycleKey, s.firedLowBalance ? 1 : s.firedThreshold!);
+    }
+  }
+
   return { checkedAt: new Date().toISOString(), services: checked, emailSent: res.sent, emailMessage: res.message };
 }
