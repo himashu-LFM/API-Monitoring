@@ -11,4 +11,4 @@
  * meaningless (there is no "cycle" to be a percentage of). We email once when
  * the remaining balance falls below this floor, and re-arm after a top-up.
  */
-export const LOW_BALANCE_FLOOR = 20_000;
+export const LOW_BALANCE_FLOOR = 4_599_600;

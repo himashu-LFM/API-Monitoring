@@ -134,14 +134,17 @@ async function gather(): Promise<{ checked: CheckedService[]; cycleKeys: string[
   return { checked, cycleKeys };
 }
 
-function renderEmail(fired: CheckedService[]): { subject: string; html: string } {
+function renderEmail(fired: CheckedService[]): { subject: string; html: string; urgent: boolean } {
   const worst = fired.reduce((a, b) => ((b.percent ?? 0) > (a.percent ?? 0) ? b : a));
   const single = fired[0];
-  const subject = fired.length > 1
-    ? `API Monitor: ${fired.length} services need attention`
+  // A low-balance (prepaid credits running out) alert is treated as URGENT.
+  const urgent = fired.some((s) => s.firedLowBalance);
+  const baseSubject = fired.length > 1
+    ? `${fired.length} services need attention`
     : single.firedLowBalance
-      ? `API Monitor: ${single.name} is down to ${(single.remaining ?? 0).toLocaleString()} credits`
-      : `API Monitor: ${worst.name} reached ${worst.firedThreshold}% usage`;
+      ? `${single.name} is critically low — ${(single.remaining ?? 0).toLocaleString()} ${single.unit} left`
+      : `${worst.name} reached ${worst.firedThreshold}% usage`;
+  const subject = urgent ? `🚨 URGENT: ${baseSubject}` : `API Monitor: ${baseSubject}`;
 
   const rows = fired.map((s) => s.firedLowBalance ? `
     <tr>
@@ -160,9 +163,17 @@ function renderEmail(fired: CheckedService[]): { subject: string; html: string }
       <td style="padding:8px 12px;border-bottom:1px solid #e7e9ee;color:#b91c1c;font-weight:600">${s.firedThreshold}% threshold</td>
     </tr>`).join("");
 
+  const urgentBanner = urgent ? `
+    <div style="background:#b91c1c;color:#fff;border-radius:10px;padding:16px 18px;margin:0 0 18px;text-align:center">
+      <div style="font-size:13px;letter-spacing:2px;font-weight:700;opacity:.9">🚨 URGENT · IMMEDIATE ATTENTION NEEDED 🚨</div>
+      <div style="font-size:20px;font-weight:800;margin-top:6px">A service is about to run out</div>
+      <div style="font-size:13px;margin-top:4px;opacity:.9">Top it up now to avoid an outage.</div>
+    </div>` : "";
+
   const html = `
   <div style="font-family:system-ui,-apple-system,sans-serif;max-width:600px">
-    <h2 style="margin:0 0 4px">${fired.every((s) => s.firedLowBalance) ? "Credit balance running low" : "Usage threshold reached"}</h2>
+    ${urgentBanner}
+    <h2 style="margin:0 0 4px;${urgent ? "color:#b91c1c" : ""}">${fired.every((s) => s.firedLowBalance) ? "Credit balance running low" : "Usage threshold reached"}</h2>
     <p style="margin:0 0 16px;color:#5b616e">Checked ${new Date().toUTCString()}</p>
     <table style="width:100%;border-collapse:collapse;font-size:14px">
       <thead><tr>
@@ -179,7 +190,7 @@ function renderEmail(fired: CheckedService[]): { subject: string; html: string }
     </p>
   </div>`;
 
-  return { subject, html };
+  return { subject, html, urgent };
 }
 
 export async function runUsageCheck(): Promise<CheckResult> {
@@ -222,8 +233,8 @@ export async function runUsageCheck(): Promise<CheckResult> {
     return { checkedAt: new Date().toISOString(), services: checked, emailSent: false, emailMessage: "thresholds crossed but email is not configured" };
   }
 
-  const { subject, html } = renderEmail(fired);
-  const res = await sendAlertEmail(subject, html);
+  const { subject, html, urgent } = renderEmail(fired);
+  const res = await sendAlertEmail(subject, html, { urgent });
 
   // Record ONLY after the mail actually left. Recording before sending meant a
   // failed or unconfigured send still marked the threshold as "notified", so it

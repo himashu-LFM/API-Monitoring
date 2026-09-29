@@ -16,3 +16,16 @@ const ADMIN_SET = new Set(ADMIN_EMAILS.map((e) => e.trim().toLowerCase()));
 export function isAdmin(email: string | null | undefined): boolean {
   return !!email && ADMIN_SET.has(email.toLowerCase());
 }
+
+/**
+ * Every admin email — the code allowlist plus any extra from the ADMIN_EMAILS
+ * env var (comma-separated). Deduplicated. Used as the recipient list for alerts
+ * so every admin is notified.
+ */
+export function allAdminEmails(): string[] {
+  const fromEnv = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return Array.from(new Set([...ADMIN_SET, ...fromEnv]));
+}

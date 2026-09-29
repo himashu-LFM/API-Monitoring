@@ -1,5 +1,6 @@
 import "server-only";
 import nodemailer from "nodemailer";
+import { allAdminEmails } from "./admins";
 
 /**
  * Gmail SMTP sender.
@@ -13,33 +14,67 @@ export interface EmailResult {
   message?: string;
 }
 
+export interface SendOptions {
+  /** Mark the message high-priority (adds Importance/X-Priority headers). */
+  urgent?: boolean;
+}
+
+/** Everyone who should receive alerts: all admins, plus ALERT_EMAIL_TO if set. */
+function recipients(): string[] {
+  const extra = (process.env.ALERT_EMAIL_TO ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return Array.from(new Set([...allAdminEmails(), ...extra]));
+}
+
 export function emailConfigured(): boolean {
   return Boolean(
     process.env.GMAIL_USER?.trim() &&
     process.env.GMAIL_APP_PASSWORD?.trim() &&
-    process.env.ALERT_EMAIL_TO?.trim(),
+    recipients().length > 0,
   );
 }
 
-export async function sendAlertEmail(subject: string, html: string): Promise<EmailResult> {
+export async function sendAlertEmail(subject: string, html: string, opts: SendOptions = {}): Promise<EmailResult> {
   const user = process.env.GMAIL_USER?.trim();
   const pass = process.env.GMAIL_APP_PASSWORD?.trim();
-  const to = process.env.ALERT_EMAIL_TO?.trim();
+  const to = recipients();
 
-  if (!user || !pass || !to) {
-    return { sent: false, message: "Email not configured — set GMAIL_USER, GMAIL_APP_PASSWORD and ALERT_EMAIL_TO" };
+  if (!user || !pass || to.length === 0) {
+    return { sent: false, message: "Email not configured — set GMAIL_USER, GMAIL_APP_PASSWORD and at least one admin/ALERT_EMAIL_TO recipient" };
   }
 
   try {
-    const transport = nodemailer.createTransport({
-      service: "gmail",
-      auth: { user, pass },
-    });
+    // Default to Gmail's SMTP host. An explicit SMTP_HOST (with optional
+    // SMTP_PORT / SMTP_SECURE) overrides it — e.g. a different provider or a
+    // custom relay — without changing any code.
+    const host = process.env.SMTP_HOST?.trim();
+    const transport = host
+      ? nodemailer.createTransport({
+          host,
+          port: Number(process.env.SMTP_PORT ?? 587),
+          secure: (process.env.SMTP_SECURE ?? "").toLowerCase() === "true" || process.env.SMTP_PORT === "465",
+          auth: { user, pass },
+        })
+      : nodemailer.createTransport({ service: "gmail", auth: { user, pass } });
+
+    const fromName = process.env.ALERT_FROM_NAME?.trim() || "API Monitor";
     await transport.sendMail({
-      from: `API Monitor <${user}>`,
+      from: `${fromName} <${user}>`,
       to,
       subject,
       html,
+      ...(opts.urgent
+        ? {
+            priority: "high" as const,
+            headers: {
+              "X-Priority": "1 (Highest)",
+              "X-MSMail-Priority": "High",
+              Importance: "high",
+            },
+          }
+        : {}),
     });
     return { sent: true };
   } catch (e) {
