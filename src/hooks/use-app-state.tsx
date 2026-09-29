@@ -23,6 +23,16 @@ type Frequency = "15 minutes" | "30 minutes" | "1 hour" | "6 hours";
  */
 const RETIRED_SERVICE_IDS = new Set(["hootsuite"]);
 
+/**
+ * Services backed by a real provider adapter. `refresh()` must never apply its
+ * mock jitter to these — not even when a fetch comes back unusable, because a
+ * provider that can't report right now still isn't something we may invent
+ * numbers for. Relying on the `live` flag alone was not enough: the moment
+ * Decodo started (correctly) reporting "no webhook this cycle", it fell back
+ * to `live: false` and silently became eligible for jitter again.
+ */
+const REAL_PROVIDER_IDS = new Set(["zyte", "decodo", "sadcaptcha", "google"]);
+
 const FREQUENCY_MS: Record<Frequency, number> = {
   "15 minutes": 15 * 60 * 1000,
   "30 minutes": 30 * 60 * 1000,
@@ -154,7 +164,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           renewalDate: decodo.renewalDate ?? s.renewalDate,
           lastChecked: "just now",
           liveNote: decodo.message ?? "Live fetch failed.",
-          live: false,
+          // In webhook mode this still counts as live: the integration is
+          // connected and Decodo's silence is itself real information (it only
+          // speaks at 80%). The badge means "backed by the real provider", not
+          // "a number was measured just now" — that nuance is in liveNote.
+          live: webhookMode,
           alertMode: webhookMode ? "fixed-webhook" : undefined,
         };
       }
@@ -269,7 +283,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     setRefreshing(true);
     setTimeout(async () => {
       setServices((prev) => prev.map((s) => {
-        if (s.live) return s; // live services get real data below, not mock jitter
+        if (s.live || REAL_PROVIDER_IDS.has(s.id)) return s; // real providers get real data below, never mock jitter
         const jitter = Math.max(-4, Math.min(4, Math.round((Math.random() - 0.4) * 5)));
         const p = Math.max(2, Math.min(100, pct(s.usage, s.limit) + jitter));
         return { ...s, usage: Math.round((p / 100) * s.limit), lastChecked: "just now" };
