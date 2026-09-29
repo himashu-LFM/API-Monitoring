@@ -31,8 +31,8 @@ const schema = z.object({
 });
 type FormValues = z.input<typeof schema>;
 
-const PROVIDERS = ["Zyte", "Google", "Hootsuite", "Decodo", "Custom API"];
-const COLORS: Record<string, string> = { Zyte: "#f97316", Google: "#4285f4", Hootsuite: "#e11d48", Decodo: "#0ea5e9" };
+const PROVIDERS = ["Zyte", "Google", "Decodo", "Custom API"];
+const COLORS: Record<string, string> = { Zyte: "#f97316", Google: "#4285f4", Decodo: "#0ea5e9" };
 
 export function AddApiModal({ trigger }: { trigger: ReactElement }) {
   const { addService } = useAppState();

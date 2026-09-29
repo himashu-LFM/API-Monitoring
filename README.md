@@ -8,7 +8,7 @@ Built with **Next.js 15 (App Router) · TypeScript · Tailwind CSS v4 · shadcn/
 
 ## Status at a glance
 
-Three of the five tracked services read **real live data**; two are still placeholders.
+Three of the four tracked services read **real live data**; Google is parked.
 
 | Service | Status | What's actually tracked | Source |
 | --- | --- | --- | --- |
@@ -16,9 +16,8 @@ Three of the five tracked services read **real live data**; two are still placeh
 | **Decodo** | 🟡 Live (limited) | 80% / 100% traffic threshold crossings only | Incoming webhook |
 | **SadCaptcha** | 🟢 Live | Credits used / remaining | `GET /license/credits` |
 | **Google** | 🔴 Mock | — | not implemented |
-| **Hootsuite** | 🔴 Mock | — | not implemented |
 
-> **Important:** alert history, usage-over-time charts and "usage anomalies" are still **seeded mock data** for every service, including the live ones. See [Known limitations](#known-limitations).
+> **Important:** alert history and "usage anomalies" are still **seeded mock data** for every service, including the live ones. Usage-over-time charts are real for Zyte only; Decodo and SadCaptcha deliberately show no chart. See [Known limitations](#known-limitations).
 
 ---
 
@@ -94,13 +93,12 @@ SADCAPTCHA_TOTAL_CREDITS=    # your last top-up amount
 
 Prepaid credits that **never expire**, so there's no renewal date and none is shown. The API only reports credits *remaining*, never the original total — without `SADCAPTCHA_TOTAL_CREDITS` you get the raw remaining balance but no meaningful percentage.
 
-### Google & Hootsuite
+### Google
 
 Placeholders only — the variables exist in `.env.example` but nothing reads them yet.
 
 Research notes for whenever these get built:
 
-- **Hootsuite** requires manual app approval (email `dev.support@hootsuite.com`) and only exposes **API-call quota** via the `X-Account-Quota` / `X-Account-Quota-Used` response headers — never subscription usage. It's effectively renewal-only.
 - **Google** has no single "usage" API; you have to point at a specific metric endpoint (e.g. a Cloud Monitoring time-series query) per API you care about.
 
 ---
@@ -196,10 +194,10 @@ Worth reading before trusting anything on screen.
 
 1. **The Alerts *page* is still seed data.** Usage-threshold **emails** are real (see above), but the rows shown on `/alerts`, the notification dropdown and the "usage anomalies" card are static mock entries — including ones naming live services. `detectUsageSpike()` and `checkRenewalReminder()` in `alert-engine.ts` are still never called.
 2. **Only usage thresholds alert.** Renewal/due reminders, spike detection and Decodo billing-failure webhooks are not wired to email yet.
-3. **Usage-over-time charts are fabricated.** The 30/90-day trend lines come from a deterministic random walk in `mock-data.ts`, even for services showing a `LIVE` badge. Real history needs stored snapshots over time; there is no datastore.
-4. **Decodo's live number isn't continuous.** It reflects the last webhook received (80% or 100%), so it sits still between threshold crossings. Displayed as `80 / 100` with an explanatory note.
+3. **Usage-over-time charts are fabricated — except Zyte's.** Zyte now plots **real measured days** (see below). Every other service's trend line still comes from a deterministic random walk in `mock-data.ts`, even with a `LIVE` badge; real history for those needs stored snapshots, and there is no datastore.
+4. **Decodo and SadCaptcha show no chart at all.** Rather than draw an invented line, their detail pages hide the chart and the alert-threshold panel, and explain why (`alertMode` in `types.ts`). Decodo only reports at its own fixed 80%/100% webhooks; SadCaptcha has no history endpoint and is alerted on a **low balance floor of 20,000 credits** (`alert-rules.ts`) instead of percentages.
 5. **All state is per-browser.** Everything lives in `localStorage`, so nothing is shared between devices or users, and clearing site data resets it.
-6. **Google and Hootsuite are mock**, and `refresh()` applies random jitter to them — their numbers move but mean nothing.
+6. **Google/YouTube is parked.** The fetch works, but the Cloud Monitoring metric returns a figure far larger than the daily quota, so it is shown as a placeholder, is not marked `live`, and is excluded from alerts. Hootsuite was removed from the dashboard entirely on 2026-09-29.
 7. **`src/lib/provider-types.ts` is unused.** It sketches a common `ApiProviderAdapter` interface the real providers don't implement.
 
 ---
@@ -208,14 +206,12 @@ Worth reading before trusting anything on screen.
 
 Roughly in order of value:
 
-1. **Real history charts from Zyte, for free.** The Stats API accepts `groupby_time=day` and returns real per-day `request_count`, `cost_microusd_total` and `response_time_sec_avg`. Zyte already stores the history — no datastore needed on our side. This replaces the fabricated trend line for Zyte outright.
-2. **Real API health.** Every Zyte stats response already carries a `status_codes` breakdown (this account currently runs ~88.8% success — millions of `429`s and `520`s). The app has no health concept at all today.
-3. **Per-domain health.** `groupby_domain=true&include_domain_health=true` returns, per domain: `status`, `my_success_rate_24h/7d`, `my_avg_response_time`, spend, plus `global_avg_success_rate` — i.e. whether a domain is hard for everyone or just for you. 26 domains are in play here.
-4. **Feed the Alerts page from real events** so it stops showing seed data next to live services.
-5. **Move dedup state to a KV store** so alert de-duplication survives serverless cold starts.
-6. **Deploy** and register the Decodo webhook against the public URL (the only way datacenter plans report anything).
-7. **Build the Google and Hootsuite providers.**
-8. Consider a **low-balance alert** for SadCaptcha — for prepaid credits "remaining is low" is the useful signal, whereas the current model is built around "usage % is high".
+1. **Real API health.** Every Zyte stats response already carries a `status_codes` breakdown (this account currently runs ~88.8% success — millions of `429`s and `520`s). The app has no health concept at all today.
+2. **Per-domain health.** `groupby_domain=true&include_domain_health=true` returns, per domain: `status`, `my_success_rate_24h/7d`, `my_avg_response_time`, spend, plus `global_avg_success_rate` — i.e. whether a domain is hard for everyone or just for you. 26 domains are in play here.
+3. **Feed the Alerts page from real events** so it stops showing seed data next to live services.
+4. **Move dedup state to a KV store** so alert de-duplication survives serverless cold starts.
+5. **Deploy** and register the Decodo webhook against the public URL (the only way datacenter plans report anything).
+6. **Fix the Google/YouTube quota metric** (break the Cloud Monitoring series down per `quota_metric` label).
 
 ---
 

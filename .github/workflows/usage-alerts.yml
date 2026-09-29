@@ -17,9 +17,20 @@ jobs:
           MONITOR_URL: ${{ secrets.MONITOR_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
         run: |
+          # Not yet deployed is a normal state, not a failure. Exiting 1 here
+          # made GitHub email "All jobs have failed" every 15 minutes (~96/day)
+          # for as long as the app was unpublished. Skip quietly instead; the
+          # check starts working by itself the moment MONITOR_URL is added.
           if [ -z "$MONITOR_URL" ]; then
-            echo "MONITOR_URL secret is not set — add your deployed URL (e.g. https://your-app.vercel.app)"
-            exit 1
+            echo "::notice::MONITOR_URL secret not set — skipping. Add it (e.g. https://your-app.vercel.app) once deployed."
+            exit 0
+          fi
+
+          # Same reasoning: without the shared secret the endpoint can only
+          # answer 401, so every run would "fail" for a setup reason.
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::notice::CRON_SECRET secret not set — skipping. It must match CRON_SECRET in the deployed app's env."
+            exit 0
           fi
 
           response=$(curl -sS --max-time 60 -w "\n%{http_code}" \

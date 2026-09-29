@@ -8,7 +8,8 @@ export interface ChartSeries {
   id: string;
   name: string;
   color: string;
-  data: number[];
+  /** `null` = no measurement for that day; Recharts draws a gap rather than a 0. */
+  data: (number | null)[];
 }
 
 const THRESHOLDS: { y: number; color: string }[] = [
@@ -37,7 +38,7 @@ export function UsageChart({ labels, series, showThresholds = true, height = 280
   labels: string[]; series: ChartSeries[]; showThresholds?: boolean; height?: number; unit?: string;
 }) {
   const data = labels.map((label, i) => {
-    const row: Record<string, string | number> = { label };
+    const row: Record<string, string | number | null> = { label };
     for (const s of series) row[s.id] = s.data[i];
     return row;
   });
