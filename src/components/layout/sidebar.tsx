@@ -4,9 +4,10 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Activity, Settings, LogOut } from "lucide-react";
 import { signOut } from "next-auth/react";
+import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "./nav";
-import { useAppState } from "@/hooks/use-app-state";
+import { initialsFrom } from "@/lib/user-display";
 
 function isActive(pathname: string, href: string) {
   if (href === "/apis") return pathname === "/apis" || pathname.startsWith("/apis/");
@@ -15,7 +16,10 @@ function isActive(pathname: string, href: string) {
 
 export function SidebarContent({ collapsed = false, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { account } = useAppState();
+  const { data: session } = useSession();
+  const name = session?.user?.name ?? "Account";
+  const email = session?.user?.email ?? "";
+  const initials = initialsFrom(session?.user?.name, session?.user?.email);
 
   return (
     <div className="flex h-full flex-col">
@@ -97,11 +101,11 @@ export function SidebarContent({ collapsed = false, onNavigate }: { collapsed?: 
         {!collapsed && (
           <div className="mt-1 flex items-center gap-2 rounded-md px-3 py-2">
             <span className="flex size-7 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-rose-500 text-xs font-semibold text-white">
-              {account.name.split(" ").map((s) => s[0]).slice(0, 2).join("")}
+              {initials}
             </span>
             <div className="min-w-0">
-              <p className="truncate text-xs font-medium">{account.name}</p>
-              <p className="truncate text-xs text-muted-foreground">{account.email}</p>
+              <p className="truncate text-xs font-medium">{name}</p>
+              <p className="truncate text-xs text-muted-foreground">{email}</p>
             </div>
           </div>
         )}

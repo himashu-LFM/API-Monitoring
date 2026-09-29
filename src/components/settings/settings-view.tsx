@@ -1,30 +1,28 @@
 "use client";
 
-import { useState } from "react";
 import { useTheme } from "next-themes";
+import { useSession } from "next-auth/react";
 import { Lock } from "lucide-react";
-import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Separator } from "@/components/ui/separator";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Segmented } from "@/components/common/segmented";
 import { useAppState } from "@/hooks/use-app-state";
+import { initialsFrom } from "@/lib/user-display";
 import type { AlertSettings, NotificationPrefs } from "@/lib/types";
 
 export function SettingsView() {
   const {
-    account, setAccount, notificationPrefs, setNotificationPrefs,
+    notificationPrefs, setNotificationPrefs,
     defaultThresholds, setDefaultThresholds, frequency, setFrequency,
   } = useAppState();
   const { theme, setTheme } = useTheme();
-  const [draft, setDraft] = useState(account);
+  const { data: session } = useSession();
+  const name = session?.user?.name ?? "—";
+  const email = session?.user?.email ?? "—";
+  const role = session?.user?.role === "ADMIN" ? "Admin" : "Member";
 
   const notifRows: [keyof NotificationPrefs, string, string][] = [
     ["emailAlerts", "Email alerts", "Threshold breach notifications by email"],
@@ -39,18 +37,22 @@ export function SettingsView() {
     <div className="mx-auto max-w-3xl space-y-4">
       <Card>
         <CardHeader><CardTitle className="text-base">Account</CardTitle></CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="acc-name">Name</Label>
-              <Input id="acc-name" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="acc-email">Email</Label>
-              <Input id="acc-email" type="email" value={draft.email} onChange={(e) => setDraft({ ...draft, email: e.target.value })} />
+        <CardContent>
+          <div className="flex items-center gap-4">
+            <span className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-rose-500 text-base font-semibold text-white">
+              {initialsFrom(session?.user?.name, session?.user?.email)}
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p className="truncate text-sm font-semibold">{name}</p>
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{role}</span>
+              </div>
+              <p className="truncate text-sm text-muted-foreground">{email}</p>
             </div>
           </div>
-          <Button onClick={() => { setAccount(draft); toast.success("Account updated."); }}>Save account</Button>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Your name and email come from your Google account and can&apos;t be edited here.
+          </p>
         </CardContent>
       </Card>
 

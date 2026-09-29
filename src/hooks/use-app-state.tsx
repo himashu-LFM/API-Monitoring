@@ -81,14 +81,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
 
 /** Pull live numbers for every service with a real provider wired up (currently: Decodo, Zyte, SadCaptcha). */
   const fetchLiveData = useCallback(async () => {
-    const [decodoRes, zyteRes, sadcaptchaRes] = await Promise.allSettled([
+    const [decodoRes, zyteRes, sadcaptchaRes, googleRes] = await Promise.allSettled([
       fetch("/api/decodo", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/zyte", { cache: "no-store" }).then((r) => r.json()),
       fetch("/api/sadcaptcha", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/google", { cache: "no-store" }).then((r) => r.json()),
     ]);
     const decodo = decodoRes.status === "fulfilled" ? decodoRes.value : null;
     const zyte = zyteRes.status === "fulfilled" ? zyteRes.value : null;
     const sadcaptcha = sadcaptchaRes.status === "fulfilled" ? sadcaptchaRes.value : null;
+    const google = googleRes.status === "fulfilled" ? googleRes.value : null;
 
     setServices((prev) => prev.map((s) => {
       if (s.id === "decodo" && decodo?.configured) {
@@ -144,6 +146,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           };
         }
         return { ...s, liveNote: sadcaptcha.message ?? "Live fetch failed.", live: false };
+      }
+      if (s.id === "google" && google?.configured) {
+        if (google.ok) {
+          return {
+            ...s,
+            usage: google.usage,
+            limit: google.limit ?? s.limit,
+            unit: google.unit ?? "units",
+            lastChecked: "just now",
+            live: true,
+            liveNote: google.limit == null
+              ? "Couldn't auto-detect the daily quota limit — % is against a placeholder."
+              : undefined,
+          };
+        }
+        return { ...s, liveNote: google.message ?? "Live fetch failed.", live: false };
       }
       return s;
     }));
