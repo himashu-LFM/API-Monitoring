@@ -14,5 +14,7 @@
   # and build output. These are plain config (dates, numbers, enums, an org
   # id), not secrets, and their short values collide with ordinary text —
   # e.g. a renewal date matching a date in a code comment — failing the build.
+  # Email addresses and the Google project number also appear in source
+  # (the admin list, a doc comment) and aren't secrets either.
   # Real secrets (API keys, tokens, passwords) are still scanned.
-  SECRETS_SCAN_OMIT_KEYS = "ZYTE_ORG_ID,ZYTE_RENEWAL,ZYTE_LIMIT,ZYTE_BILLING_CYCLE,DECODO_RENEWAL,DECODO_BILLING_CYCLE,DECODO_PROXY_TYPE,DECODO_TRAFFIC_FIELD,GOOGLE_LIMIT,ALERT_THRESHOLDS,SADCAPTCHA_TOTAL_CREDITS"
+  SECRETS_SCAN_OMIT_KEYS = "ADMIN_EMAILS,GMAIL_USER,ALERT_EMAIL_TO,GOOGLE_PROJECT_ID,ZYTE_ORG_ID,ZYTE_RENEWAL,ZYTE_LIMIT,ZYTE_BILLING_CYCLE,DECODO_RENEWAL,DECODO_BILLING_CYCLE,DECODO_PROXY_TYPE,DECODO_TRAFFIC_FIELD,GOOGLE_LIMIT,ALERT_THRESHOLDS,SADCAPTCHA_TOTAL_CREDITS"
