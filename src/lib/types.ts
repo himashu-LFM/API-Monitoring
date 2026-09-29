@@ -11,9 +11,17 @@ export interface ApiService {
   name: string;
   provider: string;
   color: string;
-  usage: number;
-  limit: number;
+  /**
+   * `null` until a provider has actually reported. Deliberately nullable rather
+   * than seeded with a placeholder: a number on screen is a claim, and 0 is as
+   * much of a lie as 420 when nothing has been measured yet. Read alongside
+   * `fetchState` — null + "loading" is a skeleton, null + "failed" is an error.
+   */
+  usage: number | null;
+  limit: number | null;
   unit: string;
+  /** Where this service is in the fetch lifecycle. */
+  fetchState?: "loading" | "live" | "failed";
   renewalDate: string; // ISO yyyy-mm-dd
   billingCycle: BillingCycle;
   authType: AuthType;

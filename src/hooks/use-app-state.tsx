@@ -6,11 +6,10 @@ import type {
   ApiService, Alert, AlertState, NotificationItem, AlertSettings, NotificationPrefs,
 } from "@/lib/types";
 import {
-  MOCK_SERVICES, MOCK_ALERTS, MOCK_NOTIFICATIONS,
+  SERVICE_SHELLS,
   DEFAULT_ALERT_SETTINGS, DEFAULT_NOTIFICATION_PREFS,
 } from "@/lib/mock-data";
 import { useLocalStorage } from "./use-local-storage";
-import { pct } from "@/lib/format";
 
 interface Account { name: string; email: string }
 type Frequency = "15 minutes" | "30 minutes" | "1 hour" | "6 hours";
@@ -22,16 +21,6 @@ type Frequency = "15 minutes" | "30 minutes" | "1 hour" | "6 hours";
  * by id on load. Safe to keep growing; an id that nobody has saved is a no-op.
  */
 const RETIRED_SERVICE_IDS = new Set(["hootsuite"]);
-
-/**
- * Services backed by a real provider adapter. `refresh()` must never apply its
- * mock jitter to these — not even when a fetch comes back unusable, because a
- * provider that can't report right now still isn't something we may invent
- * numbers for. Relying on the `live` flag alone was not enough: the moment
- * Decodo started (correctly) reporting "no webhook this cycle", it fell back
- * to `live: false` and silently became eligible for jitter again.
- */
-const REAL_PROVIDER_IDS = new Set(["zyte", "decodo", "sadcaptcha", "google"]);
 
 const FREQUENCY_MS: Record<Frequency, number> = {
   "15 minutes": 15 * 60 * 1000,
@@ -69,9 +58,9 @@ interface AppState {
 const Ctx = createContext<AppState | null>(null);
 
 export function AppStateProvider({ children }: { children: React.ReactNode }) {
-  const [services, setServices, hy1] = useLocalStorage<ApiService[]>("apimon.services", MOCK_SERVICES);
-  const [alerts, setAlerts, hy2] = useLocalStorage<Alert[]>("apimon.alerts", MOCK_ALERTS);
-  const [notifications, setNotifications, hy3] = useLocalStorage<NotificationItem[]>("apimon.notifications", MOCK_NOTIFICATIONS);
+  const [services, setServices, hy1] = useLocalStorage<ApiService[]>("apimon.services.v2", SERVICE_SHELLS);
+  const [alerts, setAlerts, hy2] = useLocalStorage<Alert[]>("apimon.alerts", []);
+  const [notifications, setNotifications, hy3] = useLocalStorage<NotificationItem[]>("apimon.notifications", []);
   const [alertSettings, setAlertSettings] = useLocalStorage<Record<string, AlertSettings>>("apimon.alertSettings", {});
   const [notificationPrefs, setNotificationPrefs] = useLocalStorage<NotificationPrefs>("apimon.notifPrefs", DEFAULT_NOTIFICATION_PREFS);
   const [defaultThresholds, setDefaultThresholds] = useLocalStorage<AlertSettings["thresholds"]>("apimon.defaultThresholds", DEFAULT_ALERT_SETTINGS.thresholds);
@@ -89,14 +78,14 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   // list (e.g. SadCaptcha) — otherwise a returning user with an older saved
   // array would never see the new default service. Runs once per new default.
   // ...and drop any service we've since stopped tracking. Removing it from
-  // MOCK_SERVICES alone isn't enough: a returning browser keeps its own saved
+  // SERVICE_SHELLS alone isn't enough: a returning browser keeps its own saved
   // copy, so Hootsuite would have stayed on the dashboard forever.
   useEffect(() => {
     if (!hy1) return;
     setServices((prev) => {
       const kept = prev.filter((s) => !RETIRED_SERVICE_IDS.has(s.id));
       const ids = new Set(kept.map((s) => s.id));
-      const missing = MOCK_SERVICES.filter((m) => !ids.has(m.id));
+      const missing = SERVICE_SHELLS.filter((m) => !ids.has(m.id));
       if (kept.length === prev.length && missing.length === 0) return prev;
       return [...kept, ...missing];
     });
@@ -119,33 +108,45 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     });
   }, [hy3, setNotifications]);
 
-/** Pull live numbers for every service with a real provider wired up (Decodo, Zyte, SadCaptcha, YouTube). */
+/**
+ * Pull live numbers for every service with a real provider wired up.
+ *
+ * Each provider is merged the moment ITS OWN response lands, rather than
+ * waiting for all four. Zyte's stats API takes 7-11s (measured; it is slow
+ * regardless of window size or grouping), and batching meant Decodo (~0ms,
+ * local file), SadCaptcha (~0.4s) and Google (~1.2s) all sat invisible behind
+ * it — the whole dashboard looked frozen for ten seconds because of one
+ * upstream. Now the fast ones paint immediately and Zyte fills in late.
+ */
   const fetchLiveData = useCallback(async () => {
-    const [decodoRes, zyteRes, sadcaptchaRes, googleRes] = await Promise.allSettled([
-      fetch("/api/decodo", { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/zyte", { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/sadcaptcha", { cache: "no-store" }).then((r) => r.json()),
-      fetch("/api/google", { cache: "no-store" }).then((r) => r.json()),
-    ]);
-    const decodo = decodoRes.status === "fulfilled" ? decodoRes.value : null;
-    const zyte = zyteRes.status === "fulfilled" ? zyteRes.value : null;
-    const sadcaptcha = sadcaptchaRes.status === "fulfilled" ? sadcaptchaRes.value : null;
-    const google = googleRes.status === "fulfilled" ? googleRes.value : null;
+    const patch = (id: string, fn: (s: ApiService) => ApiService) =>
+      setServices((prev) => prev.map((s) => (s.id === id ? fn(s) : s)));
 
-    setServices((prev) => prev.map((s) => {
-      if (s.id === "decodo" && decodo?.configured) {
+    const get = (path: string) => fetch(path, { cache: "no-store" }).then((r) => r.json());
+
+    const decodoJob = get("/api/decodo").then((decodo) => {
+      if (!decodo?.configured) {
+        // Not configured is a final answer, not a pending one — otherwise the
+        // card spins forever waiting for a provider that will never report.
+        patch("decodo", (s) => ({ ...s, live: false, fetchState: "failed" as const,
+          liveNote: decodo?.message ?? "Not configured — add its keys to .env.local." }));
+        return;
+      }
+      patch("decodo", (s) => {
+        const webhookMode = decodo.mode === "webhook";
         if (decodo.ok) {
           return {
             ...s,
             usage: Math.round(decodo.usageGb * 1000) / 1000,
             limit: decodo.limitGb ?? s.limit,
-            unit: decodo.mode === "webhook" ? "% of threshold" : s.unit,
+            unit: webhookMode ? "% of threshold" : s.unit,
             renewalDate: decodo.renewalDate ?? s.renewalDate,
             lastChecked: "just now",
             live: true,
+            fetchState: "live" as const,
             // even a successful webhook read gets an explanatory note (threshold-only, not continuous)
-            liveNote: decodo.mode === "webhook" ? decodo.message : undefined,
-            alertMode: decodo.mode === "webhook" ? "fixed-webhook" : undefined,
+            liveNote: webhookMode ? decodo.message : undefined,
+            alertMode: webhookMode ? "fixed-webhook" : undefined,
           };
         }
         // Configured but not reporting (unsupported plan, field not set, no
@@ -155,7 +156,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         // write kept a reset plan showing "80 / 100 · High Usage" for days.
         // 0 here means "no threshold crossed yet", which is what Decodo's
         // silence actually tells us — it stays quiet until 80%.
-        const webhookMode = decodo.mode === "webhook";
         return {
           ...s,
           usage: webhookMode ? 0 : s.usage,
@@ -164,6 +164,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           renewalDate: decodo.renewalDate ?? s.renewalDate,
           lastChecked: "just now",
           liveNote: decodo.message ?? "Live fetch failed.",
+          fetchState: webhookMode ? ("live" as const) : ("failed" as const),
           // In webhook mode this still counts as live: the integration is
           // connected and Decodo's silence is itself real information (it only
           // speaks at 80%). The badge means "backed by the real provider", not
@@ -171,73 +172,101 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           live: webhookMode,
           alertMode: webhookMode ? "fixed-webhook" : undefined,
         };
+      });
+    });
+
+    const zyteJob = get("/api/zyte").then((zyte) => {
+      if (!zyte?.configured) {
+        // Not configured is a final answer, not a pending one — otherwise the
+        // card spins forever waiting for a provider that will never report.
+        patch("zyte", (s) => ({ ...s, live: false, fetchState: "failed" as const,
+          liveNote: zyte?.message ?? "Not configured — add its keys to .env.local." }));
+        return;
       }
-      if (s.id === "zyte" && zyte?.configured) {
-        if (zyte.ok) {
-          return {
-            ...s,
-            usage: zyte.usage,
-            limit: zyte.limit ?? s.limit,
-            unit: "$",
-            renewalDate: zyte.renewalDate ?? s.renewalDate,
-            lastChecked: "just now",
-            live: true,
-            // Real measured days from Zyte's stats API — the chart stops guessing.
-            dailyUsage: Array.isArray(zyte.history)
-              ? zyte.history.map((d: { date: string; usd: number }) => ({ date: d.date, value: d.usd }))
-              : undefined,
-            liveNote: zyte.limit == null
-              ? "No ZYTE_LIMIT set — this account has no Spending Limit configured on Zyte's own Spending Alerts page either, so this % is against a placeholder, not a real cap."
-              : undefined,
-          };
+      patch("zyte", (s) => {
+        if (!zyte.ok) {
+          return { ...s, renewalDate: zyte.renewalDate ?? s.renewalDate, liveNote: zyte.message ?? "Live fetch failed.", live: false, fetchState: "failed" as const };
         }
-        return { ...s, renewalDate: zyte.renewalDate ?? s.renewalDate, liveNote: zyte.message ?? "Live fetch failed.", live: false };
+        return {
+          ...s,
+          usage: zyte.usage,
+          limit: zyte.limit ?? s.limit,
+          unit: "$",
+          renewalDate: zyte.renewalDate ?? s.renewalDate,
+          lastChecked: "just now",
+          live: true,
+          fetchState: "live" as const,
+          // Real measured days from Zyte's stats API — the chart stops guessing.
+          dailyUsage: Array.isArray(zyte.history)
+            ? zyte.history.map((d: { date: string; usd: number }) => ({ date: d.date, value: d.usd }))
+            : undefined,
+          liveNote: zyte.limit == null
+            ? "No ZYTE_LIMIT set — this account has no Spending Limit configured on Zyte's own Spending Alerts page either, so this % is against a placeholder, not a real cap."
+            : undefined,
+        };
+      });
+    });
+
+    const sadcaptchaJob = get("/api/sadcaptcha").then((sadcaptcha) => {
+      if (!sadcaptcha?.configured) {
+        // Not configured is a final answer, not a pending one — otherwise the
+        // card spins forever waiting for a provider that will never report.
+        patch("sadcaptcha", (s) => ({ ...s, live: false, fetchState: "failed" as const,
+          liveNote: sadcaptcha?.message ?? "Not configured — add its keys to .env.local." }));
+        return;
       }
-      if (s.id === "sadcaptcha" && sadcaptcha?.configured) {
-        if (sadcaptcha.ok) {
-          const hasTotal = sadcaptcha.usage != null && sadcaptcha.limit != null;
-          // With a known total: usage = consumed, limit = total => real % used.
-          // Without it: we only know credits remaining. Show usage=0 so the bar
-          // stays green (not a misleading red 100%), put the real remaining in
-          // the Remaining column (limit - usage), and let the note explain that
-          // a true % needs SADCAPTCHA_TOTAL_CREDITS.
-          return {
-            ...s,
-            usage: hasTotal ? sadcaptcha.usage : 0,
-            limit: hasTotal ? sadcaptcha.limit : sadcaptcha.remaining,
-            unit: "credits",
-            lastChecked: "just now",
-            live: true,
-            liveNote: hasTotal ? undefined : sadcaptcha.message,
-            alertMode: "low-balance",
-          };
+      patch("sadcaptcha", (s) => {
+        if (!sadcaptcha.ok) {
+          return { ...s, liveNote: sadcaptcha.message ?? "Live fetch failed.", live: false, alertMode: "low-balance" as const, fetchState: "failed" as const };
         }
-        return { ...s, liveNote: sadcaptcha.message ?? "Live fetch failed.", live: false, alertMode: "low-balance" };
+        const hasTotal = sadcaptcha.usage != null && sadcaptcha.limit != null;
+        // With a known total: usage = consumed, limit = total => real % used.
+        // Without it: we only know credits remaining. Show usage=0 so the bar
+        // stays green (not a misleading red 100%), put the real remaining in
+        // the Remaining column (limit - usage), and let the note explain that
+        // a true % needs SADCAPTCHA_TOTAL_CREDITS.
+        return {
+          ...s,
+          usage: hasTotal ? sadcaptcha.usage : 0,
+          limit: hasTotal ? sadcaptcha.limit : sadcaptcha.remaining,
+          unit: "credits",
+          lastChecked: "just now",
+          live: true,
+          fetchState: "live" as const,
+          liveNote: hasTotal ? undefined : sadcaptcha.message,
+          alertMode: "low-balance",
+        };
+      });
+    });
+
+    const googleJob = get("/api/google").then((google) => {
+      if (!google?.configured) {
+        // Not configured is a final answer, not a pending one — otherwise the
+        // card spins forever waiting for a provider that will never report.
+        patch("google", (s) => ({ ...s, live: false, fetchState: "failed" as const,
+          liveNote: google?.message ?? "Not configured — add its keys to .env.local." }));
+        return;
       }
-      // The 2026-09-28 parking of YouTube was removed here on merge: it existed
-      // because the quota metric summed every sub-quota (5,156,540 against a
-      // 10,000/day cap), and the provider now pins quota_metric to
-      // "<service>/default", which is exactly that fix. Kept as one block —
-      // leaving the old one above this would have shadowed this code entirely,
-      // since the first matching branch returns.
-      if (s.id === "google" && google?.configured) {
-        if (google.ok) {
-          return {
-            ...s,
-            usage: google.usage,
-            limit: google.limit ?? s.limit,
-            unit: google.unit ?? "units",
-            lastChecked: "just now",
-            live: true,
-            liveNote: google.limit == null
-              ? "Couldn't auto-detect the daily quota limit — % is against a placeholder."
-              : undefined,
-          };
+      patch("google", (s) => {
+        if (!google.ok) {
+          return { ...s, liveNote: google.message ?? "Live fetch failed.", live: false, fetchState: "failed" as const };
         }
-        return { ...s, liveNote: google.message ?? "Live fetch failed.", live: false };
-      }
-      return s;
-    }));
+        return {
+          ...s,
+          usage: google.usage,
+          limit: google.limit ?? s.limit,
+          unit: google.unit ?? "units",
+          lastChecked: "just now",
+          live: true,
+          fetchState: "live" as const,
+          liveNote: google.limit == null
+            ? "Couldn't auto-detect the daily quota limit — % is against a placeholder."
+            : undefined,
+        };
+      });
+    });
+
+    await Promise.allSettled([decodoJob, zyteJob, sadcaptchaJob, googleJob]);
     setLastUpdated(Date.now());
   }, [setServices]);
 
@@ -281,20 +310,19 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const saveAlertSettings = useCallback((id: string, s: AlertSettings) =>
     setAlertSettings((prev) => ({ ...prev, [id]: s })), [setAlertSettings]);
 
-  const refresh = useCallback(() => {
+  // Starts fetching immediately. There used to be a 750ms setTimeout here, left
+  // from when every service was mock and the delay made Refresh feel like it was
+  // doing work; with real providers it was just 750ms of nothing before the
+  // requests even left. The mock-jitter pass it wrapped is gone too — every
+  // remaining service is backed by a real provider, so it could never fire.
+  const refresh = useCallback(async () => {
     setRefreshing(true);
-    setTimeout(async () => {
-      setServices((prev) => prev.map((s) => {
-        if (s.live || REAL_PROVIDER_IDS.has(s.id)) return s; // real providers get real data below, never mock jitter
-        const jitter = Math.max(-4, Math.min(4, Math.round((Math.random() - 0.4) * 5)));
-        const p = Math.max(2, Math.min(100, pct(s.usage, s.limit) + jitter));
-        return { ...s, usage: Math.round((p / 100) * s.limit), lastChecked: "just now" };
-      }));
+    try {
       await fetchLiveData();
-      setLastUpdated(Date.now());
+    } finally {
       setRefreshing(false);
-    }, 750);
-  }, [setServices, fetchLiveData]);
+    }
+  }, [fetchLiveData]);
 
   const unreadNotifications = useMemo(() => notifications.filter((n) => !n.read).length, [notifications]);
 

@@ -16,6 +16,7 @@ export interface EngineAlert {
 
 /** Fire when a service's usage crosses one of the enabled thresholds. */
 export function checkUsageThresholds(service: ApiService, settings: AlertSettings): EngineAlert[] {
+  if (service.usage == null || service.limit == null) return []; // nothing measured yet
   const p = pct(service.usage, service.limit);
   const out: EngineAlert[] = [];
   const rungs: [number, keyof AlertSettings["thresholds"], Severity][] = [
@@ -67,7 +68,12 @@ export function checkRenewalReminder(service: ApiService, settings: AlertSetting
 
 /** Convenience roll-up used by the dashboard summary. */
 export function summarize(services: ApiService[]) {
-  const counts = { healthy: 0, warning: 0, high: 0, critical: 0 };
-  for (const s of services) counts[getUsageStatus(pct(s.usage, s.limit))]++;
+  // Services still loading (or failed) are counted separately — folding them in
+  // as "healthy" would have made the KPI row claim things it hasn't measured.
+  const counts = { healthy: 0, warning: 0, high: 0, critical: 0, unknown: 0 };
+  for (const s of services) {
+    if (s.usage == null || s.limit == null) { counts.unknown++; continue; }
+    counts[getUsageStatus(pct(s.usage, s.limit))]++;
+  }
   return counts;
 }

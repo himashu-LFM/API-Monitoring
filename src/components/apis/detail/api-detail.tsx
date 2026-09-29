@@ -41,15 +41,19 @@ export function ApiDetail({ id }: { id: string }) {
     );
   }
 
-  const p = pct(service.usage, service.limit);
+  const hasNumbers = service.usage != null && service.limit != null;
+  const p = hasNumbers ? pct(service.usage!, service.limit!) : 0;
+  const failed = service.fetchState === "failed";
+  // Nothing measured yet: show a dash rather than a number we'd be inventing.
+  const dash = failed ? "Unavailable" : "—";
   const hasRenewal = !!service.renewalDate;
   const d = hasRenewal ? daysUntil(service.renewalDate) : null;
 
   const metrics = [
-    { label: "Current usage", value: fmtNum(service.usage), sub: service.unit },
-    { label: "Usage limit", value: fmtNum(service.limit), sub: `${service.unit}/cycle` },
-    { label: "Remaining", value: fmtNum(service.limit - service.usage), sub: `${100 - p}% left` },
-    { label: "Usage", value: `${p}%`, sub: getUsageStatus(p) },
+    { label: "Current usage", value: hasNumbers ? fmtNum(service.usage!) : dash, sub: service.unit },
+    { label: "Usage limit", value: hasNumbers ? fmtNum(service.limit!) : dash, sub: `${service.unit}/cycle` },
+    { label: "Remaining", value: hasNumbers ? fmtNum(service.limit! - service.usage!) : dash, sub: hasNumbers ? `${100 - p}% left` : "not measured" },
+    { label: "Usage", value: hasNumbers ? `${p}%` : dash, sub: hasNumbers ? getUsageStatus(p) : "not measured" },
     { label: "Renewal", value: hasRenewal ? fmtDate(service.renewalDate) : "No expiry", sub: hasRenewal ? service.billingCycle : "credits don't expire", small: true },
     { label: "Days remaining", value: d != null ? `${d}` : "—", sub: hasRenewal ? "until renewal" : "n/a" },
   ];

@@ -11,10 +11,17 @@ import { StatusBadge } from "@/components/common/status-badge";
 import { UsageProgress } from "@/components/common/usage-progress";
 import { getUsageStatus } from "@/lib/status";
 import { pct, fmtNum, fmtDateShort, daysUntil } from "@/lib/format";
+import { useAppState } from "@/hooks/use-app-state";
 import type { ApiService } from "@/lib/types";
+
+/** Grey bar standing in for a value we haven't measured yet. */
+function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`h-3 animate-pulse rounded bg-muted ${className}`} />;
+}
 
 export function ApiTable({ services }: { services: ApiService[] }) {
   const router = useRouter();
+  const { refresh, refreshing } = useAppState();
   return (
     <div className="overflow-x-auto">
       <Table>
@@ -32,7 +39,9 @@ export function ApiTable({ services }: { services: ApiService[] }) {
         </TableHeader>
         <TableBody>
           {services.map((s) => {
-            const p = pct(s.usage, s.limit);
+            const hasNumbers = s.usage != null && s.limit != null;
+            const p = hasNumbers ? pct(s.usage!, s.limit!) : 0;
+            const failed = s.fetchState === "failed";
             const hasRenewal = !!s.renewalDate;
             const d = hasRenewal ? daysUntil(s.renewalDate) : null;
             return (
@@ -57,25 +66,42 @@ export function ApiTable({ services }: { services: ApiService[] }) {
                     </div>
                   </div>
                 </TableCell>
-                <TableCell><StatusBadge status={getUsageStatus(p)} /></TableCell>
                 <TableCell>
-                  <div className="mb-1.5 flex items-center justify-between text-xs">
-                    <span className="tabular-nums text-muted-foreground">{fmtNum(s.usage)} / {fmtNum(s.limit)}</span>
-                    <span className="font-medium tabular-nums">{p}%</span>
-                  </div>
-                  <UsageProgress percentage={p} />
+                  {hasNumbers ? <StatusBadge status={getUsageStatus(p)} />
+                    : failed ? <span className="text-xs font-medium text-crit">Unavailable</span>
+                    : <Skeleton className="w-16" />}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{fmtNum(s.limit)}</TableCell>
-                <TableCell className="text-right tabular-nums">{fmtNum(s.limit - s.usage)}</TableCell>
+                <TableCell>
+                  {hasNumbers ? (
+                    <>
+                      <div className="mb-1.5 flex items-center justify-between text-xs">
+                        <span className="tabular-nums text-muted-foreground">{fmtNum(s.usage!)} / {fmtNum(s.limit!)}</span>
+                        <span className="font-medium tabular-nums">{p}%</span>
+                      </div>
+                      <UsageProgress percentage={p} />
+                    </>
+                  ) : failed ? (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); refresh(); }}
+                      disabled={refreshing}
+                      className="text-xs font-medium text-info hover:underline disabled:opacity-50"
+                    >
+                      {refreshing ? "Retrying…" : "Retry"}
+                    </button>
+                  ) : <Skeleton className="w-full" />}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">{hasNumbers ? fmtNum(s.limit!) : <Skeleton className="ml-auto w-12" />}</TableCell>
+                <TableCell className="text-right tabular-nums">{hasNumbers ? fmtNum(s.limit! - s.usage!) : <Skeleton className="ml-auto w-12" />}</TableCell>
                 <TableCell>
                   {hasRenewal ? (
                     <>
                       <div className="font-medium tabular-nums">{d}d</div>
                       <div className="text-xs text-muted-foreground">{fmtDateShort(s.renewalDate)}</div>
                     </>
-                  ) : (
+                  ) : hasNumbers || failed ? (
                     <div className="text-xs text-muted-foreground">No expiry</div>
-                  )}
+                  ) : <Skeleton className="w-14" />}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{s.lastChecked}</TableCell>
                 <TableCell>

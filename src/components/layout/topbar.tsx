@@ -10,16 +10,13 @@ import { cn } from "@/lib/utils";
 import { useAppState } from "@/hooks/use-app-state";
 import { initialsFrom } from "@/lib/user-display";
 import { SidebarContent } from "./sidebar";
-import { NotificationDropdown } from "./notification-dropdown";
 import { ThemeToggle } from "./theme-toggle";
 import { useState } from "react";
 
 const TITLES: Record<string, { title: string; crumb: string }> = {
   "/dashboard": { title: "Dashboard", crumb: "Overview of all monitored services" },
   "/apis": { title: "APIs", crumb: "Monitor usage, limits and renewals" },
-  "/alerts": { title: "Alerts", crumb: "Threshold, anomaly and renewal alerts" },
   "/renewals": { title: "Renewals", crumb: "Billing cycle calendar" },
-  "/settings": { title: "Settings", crumb: "Account & monitoring preferences" },
 };
 
 function relative(ts: number) {
@@ -83,7 +80,6 @@ export function Topbar({ collapsed, onToggleCollapse }: { collapsed: boolean; on
           </span>
         </Button>
 
-        <NotificationDropdown />
         <ThemeToggle />
 
         <span className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-rose-500 text-xs font-semibold text-white" title={userName}>

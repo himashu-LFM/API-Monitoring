@@ -1,68 +1,29 @@
-import type {
-  ApiService, UsageHistory, UsagePoint, Alert, Anomaly, NotificationItem,
-  AlertSettings, NotificationPrefs,
-} from "./types";
-import { today } from "./format";
+import type { ApiService, AlertSettings, NotificationPrefs } from "./types";
 
 /**
- * Centralized mock data layer. All fictional — not real provider data.
- * UI components read from here (or the app-state store) and never hardcode
- * their own copies.
+ * Static configuration for the app: which services exist, and defaults for
+ * client-side preferences. No fabricated usage data lives here any more.
  */
 
-export const MOCK_SERVICES: ApiService[] = [
+/**
+ * The services we monitor. Identity only — name, provider, colour, how it's
+ * billed. Deliberately NO usage/limit/renewal numbers: those must come from the
+ * provider or not be shown at all. Seeding them meant a failed fetch left a
+ * plausible-looking invented figure on the dashboard.
+ */
+export const SERVICE_SHELLS: ApiService[] = [
   { id: "zyte", name: "Zyte", provider: "Zyte API", color: "#f97316",
-    usage: 420, limit: 1000, unit: "$", renewalDate: "2026-09-30",
-    billingCycle: "Monthly", authType: "API Key", lastChecked: "4 minutes ago" },
+    usage: null, limit: null, unit: "$", renewalDate: "",
+    billingCycle: "Monthly", authType: "API Key", lastChecked: "never", fetchState: "loading" },
   { id: "google", name: "YouTube", provider: "YouTube Data API v3", color: "#ff0000",
-    usage: 3200, limit: 10000, unit: "units", renewalDate: "",
-    billingCycle: "Daily", authType: "OAuth", lastChecked: "4 minutes ago" },
+    usage: null, limit: null, unit: "units", renewalDate: "",
+    billingCycle: "Daily", authType: "OAuth", lastChecked: "never", fetchState: "loading" },
   { id: "decodo", name: "Decodo", provider: "Decodo Proxy Network", color: "#0ea5e9",
-    usage: 67000, limit: 100000, unit: "GB", renewalDate: "2026-10-06",
-    billingCycle: "Monthly", authType: "API Key", lastChecked: "4 minutes ago" },
+    usage: null, limit: null, unit: "GB", renewalDate: "",
+    billingCycle: "Monthly", authType: "API Key", lastChecked: "never", fetchState: "loading" },
   { id: "sadcaptcha", name: "SadCaptcha", provider: "SadCaptcha API", color: "#a855f7",
-    usage: 4200, limit: 10000, unit: "credits", renewalDate: "",
-    billingCycle: "Custom", authType: "API Key", lastChecked: "4 minutes ago" },
-];
-
-// Deterministic 90-day daily usage-% history so charts look real but stable.
-function genHistory(end: number, volatility: number, seed: number, spikeDay?: number): UsagePoint[] {
-  const out: UsagePoint[] = [];
-  let v = Math.max(4, end - 32);
-  let s = seed;
-  const rand = () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
-  for (let i = 0; i < 90; i++) {
-    v += (end - v) / (90 - i) + (rand() - 0.45) * volatility;
-    if (spikeDay !== undefined && i === spikeDay) v += 16;
-    v = Math.max(2, Math.min(100, v));
-    const d = today();
-    d.setDate(d.getDate() - (89 - i));
-    out.push({ date: d.toISOString().slice(0, 10), value: Math.round(v * 10) / 10 });
-  }
-  out[89].value = end;
-  return out;
-}
-
-export const MOCK_USAGE_HISTORY: UsageHistory = {
-  zyte: genHistory(42, 4, 11, 82),
-  google: genHistory(78, 5, 29),
-  decodo: genHistory(67, 5, 47),
-  sadcaptcha: genHistory(42, 4, 19),
-};
-
-export const MOCK_ALERTS: Alert[] = [
-  { id: "a2", serviceId: "decodo", title: "Decodo crossed 50% usage", severity: "warning", trigger: "Threshold 50%", timeLabel: "Yesterday, 4:21 PM", state: "unread" },
-  { id: "a3", serviceId: "zyte", title: "Zyte usage spike detected", severity: "warning", trigger: "Anomaly detection", timeLabel: "Yesterday, 1:15 PM", state: "read" },
-  { id: "a5", serviceId: "google", title: "Google reached 75% usage", severity: "warning", trigger: "Threshold 75%", timeLabel: "2 days ago", state: "resolved" },
-];
-
-export const MOCK_ANOMALIES: Anomaly[] = [
-  { id: "an2", serviceId: "zyte", title: "Zyte usage acceleration", description: "Usage is 24% higher than the previous 7-day average.", severity: "Medium" },
-];
-
-export const MOCK_NOTIFICATIONS: NotificationItem[] = [
-  { id: "n2", serviceId: "decodo", title: "Decodo crossed 50%", severity: "warning", timeLabel: "2 hours ago", read: false },
-  { id: "n3", serviceId: "zyte", title: "Zyte renewal in 8 days", severity: "info", timeLabel: "Yesterday", read: true },
+    usage: null, limit: null, unit: "credits", renewalDate: "",
+    billingCycle: "Custom", authType: "API Key", lastChecked: "never", fetchState: "loading" },
 ];
 
 export const DEFAULT_ALERT_SETTINGS: AlertSettings = {
