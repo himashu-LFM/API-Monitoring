@@ -1,6 +1,5 @@
 import "server-only";
-import { promises as fs } from "fs";
-import path from "path";
+import { readBlob, writeBlob } from "./store";
 
 /**
  * Remembers which usage thresholds have already been emailed, so a checker
@@ -9,27 +8,23 @@ import path from "path";
  * Keyed by `<serviceId>:<cycleKey>` so the record resets on its own every
  * billing cycle — cross a threshold again next cycle and you get mailed again.
  *
- * File-backed, which is fine locally and in a CI runner that persists the
- * file. On serverless (Vercel) the filesystem is ephemeral, so this degrades
- * to "may re-send after a cold start" — see README for the deployment note.
+ * Persisted through `store.ts`: a local file in dev, Upstash Redis once the
+ * app is deployed. The remote backend is not optional on serverless — each
+ * invocation can get a fresh container, so a file-only store would read back
+ * empty every run and re-send every alert on every check.
  */
 
-const FILE = path.join(process.cwd(), ".data", "alert-state.json");
+const NAME = "alert-state";
 
 /** serviceId:cycleKey -> highest threshold already notified */
 type AlertState = Record<string, number>;
 
 async function read(): Promise<AlertState> {
-  try {
-    return JSON.parse(await fs.readFile(FILE, "utf8")) as AlertState;
-  } catch {
-    return {};
-  }
+  return (await readBlob<AlertState>(NAME)) ?? {};
 }
 
 async function write(state: AlertState): Promise<void> {
-  await fs.mkdir(path.dirname(FILE), { recursive: true });
-  await fs.writeFile(FILE, JSON.stringify(state, null, 2), "utf8");
+  await writeBlob(NAME, state);
 }
 
 export async function highestNotified(serviceId: string, cycleKey: string): Promise<number> {

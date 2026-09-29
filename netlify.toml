@@ -1,0 +1,12 @@
+# Netlify build config.
+#
+# The Next.js runtime is auto-installed by Netlify, so no plugin entry is
+# needed. Node 20 is pinned because the build tooling and @netlify/blobs both
+# expect a modern runtime and Netlify's default has moved before.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
