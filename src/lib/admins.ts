@@ -8,7 +8,8 @@
 export const ADMIN_EMAILS = [
   "khushi@listenfirstmedia.com",
   "sudhanshu@listenfirstmedia.com",
-  
+  "sanjeev@listenfirstmedia.com",
+  "kratika@listenfirstmedia.com"
 ];
 
 const ADMIN_SET = new Set(ADMIN_EMAILS.map((e) => e.trim().toLowerCase()));
