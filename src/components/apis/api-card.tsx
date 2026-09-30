@@ -12,7 +12,10 @@ import type { ApiService } from "@/lib/types";
 export function ApiCard({ service: s }: { service: ApiService }) {
   const hasNumbers = s.usage != null && s.limit != null;
   const p = hasNumbers ? pct(s.usage!, s.limit!) : 0;
-  const pending = hasNumbers ? null : (s.fetchState === "failed" ? "Unavailable" : "Loading…");
+  const pending = hasNumbers ? null
+    : s.fetchState === "failed" ? "Unavailable"
+    : s.fetchState === "waiting" ? "Reports at 80%"
+    : "Loading…";
   const d = daysUntil(s.renewalDate);
   return (
     <Link href={`/apis/${s.id}`} className="block focus:outline-none">

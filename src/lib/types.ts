@@ -15,13 +15,22 @@ export interface ApiService {
    * `null` until a provider has actually reported. Deliberately nullable rather
    * than seeded with a placeholder: a number on screen is a claim, and 0 is as
    * much of a lie as 420 when nothing has been measured yet. Read alongside
-   * `fetchState` — null + "loading" is a skeleton, null + "failed" is an error.
+   * `fetchState` — null + "loading" is a skeleton, null + "failed" is an error,
+   * null + "waiting" is a healthy service that simply has nothing to report.
    */
   usage: number | null;
   limit: number | null;
   unit: string;
   /** Where this service is in the fetch lifecycle. */
-  fetchState?: "loading" | "live" | "failed";
+  /**
+   * Where this service is in the fetch lifecycle.
+   *
+   * "waiting" exists for providers that are working correctly but stay silent
+   * by design — Decodo only speaks at 80% and 100%, so between those points it
+   * has nothing to send. Calling that "failed" made a healthy integration look
+   * broken, and offered a Retry button that could never help.
+   */
+  fetchState?: "loading" | "live" | "failed" | "waiting";
   renewalDate: string; // ISO yyyy-mm-dd
   billingCycle: BillingCycle;
   authType: AuthType;

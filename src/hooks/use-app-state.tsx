@@ -149,31 +149,36 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             alertMode: webhookMode ? "fixed-webhook" : undefined,
           };
         }
-        // Not reporting right now. What that MEANS depends entirely on whether
-        // Decodo has ever reached us:
+        // No webhook for the CURRENT cycle, so there is no number to show.
         //
-        //  - It has (webhookSeen) → the connection is proven, so silence really
-        //    does mean "under 80%". Show 0 and keep the LIVE badge.
-        //  - It never has → we have no evidence of anything. Showing 0 would
-        //    claim no threshold was crossed, and LIVE would claim a working
-        //    integration; both would be inventions. Show no number at all.
+        // Everything here used to be inferred rather than reported: a 0 because
+        // "Decodo stays quiet under 80%", against a hardcoded 100. Both were our
+        // reasoning, not Decodo's data, and a stored event from a finished cycle
+        // was enough to keep the LIVE badge on. This service is webhook-only, so
+        // it now shows a figure ONLY when a webhook for this cycle delivered one.
         //
-        // These two looked identical before, so a Decodo account with the
-        // webhook URL never registered still displayed "LIVE · 0 / 100".
-        const proven = webhookMode && decodo.webhookSeen === true;
-        // The old figure must be CLEARED, not just left alone: a browser that
-        // merged last cycle's 80% still has it in localStorage, so skipping the
-        // write kept a reset plan showing "80 / 100 · High Usage" for days.
+        // `webhookSeen` still shapes the explanation below — "never connected"
+        // and "connected but quiet" are genuinely different problems — but it no
+        // longer puts a number on screen.
+        //
+        // Clearing the old values matters: a browser that merged last cycle's
+        // 80% still has it in localStorage, so skipping the write would leave a
+        // reset plan showing "80 / 100 · High Usage" for days.
         return {
           ...s,
-          usage: proven ? 0 : webhookMode ? null : s.usage,
-          limit: proven ? 100 : webhookMode ? null : s.limit,
+          usage: webhookMode ? null : s.usage,
+          limit: webhookMode ? null : s.limit,
           unit: webhookMode ? "% of threshold" : s.unit,
           renewalDate: decodo.renewalDate ?? s.renewalDate,
           lastChecked: "just now",
           liveNote: decodo.message ?? "Live fetch failed.",
-          fetchState: proven ? ("live" as const) : ("failed" as const),
-          live: proven,
+          // Silence is the designed behaviour in webhook mode, not a failure:
+          // Decodo sends nothing between its 80% and 100% points. Marking it
+          // "failed" painted a working integration red and offered a Retry that
+          // could never produce data. Only the REST path (which should answer
+          // every call) is a genuine failure when it doesn't.
+          fetchState: webhookMode ? ("waiting" as const) : ("failed" as const),
+          live: false,
           alertMode: webhookMode ? "fixed-webhook" : undefined,
         };
       });
