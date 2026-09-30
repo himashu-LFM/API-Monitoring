@@ -1,9 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Menu, RefreshCw, Search, PanelLeft } from "lucide-react";
+import { Menu, RefreshCw, PanelLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet";
 import { useSession } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -11,13 +10,29 @@ import { useAppState } from "@/hooks/use-app-state";
 import { initialsFrom } from "@/lib/user-display";
 import { SidebarContent } from "./sidebar";
 import { ThemeToggle } from "./theme-toggle";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const TITLES: Record<string, { title: string; crumb: string }> = {
   "/dashboard": { title: "Dashboard", crumb: "Overview of all monitored services" },
   "/apis": { title: "APIs", crumb: "Monitor usage, limits and renewals" },
   "/renewals": { title: "Renewals", crumb: "Billing cycle calendar" },
 };
+
+/**
+ * Re-render on a timer so the "Updated …" label actually ages.
+ *
+ * `relative()` is computed during render, and nothing re-rendered this bar
+ * between polls — so it kept saying "just now" while the data underneath was
+ * up to 15 minutes old. On a monitoring dashboard that is the worst kind of
+ * wrong: it looks freshest exactly when it is most stale.
+ */
+function useTicker(everyMs = 30_000) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((n) => n + 1), everyMs);
+    return () => clearInterval(id);
+  }, [everyMs]);
+}
 
 function relative(ts: number) {
   const mins = Math.max(0, Math.round((Date.now() - ts) / 60000));
@@ -31,6 +46,7 @@ function relative(ts: number) {
 export function Topbar({ collapsed, onToggleCollapse }: { collapsed: boolean; onToggleCollapse: () => void }) {
   const pathname = usePathname();
   const { lastUpdated, refreshing, refresh, hydrated } = useAppState();
+  useTicker();
   const { data: session } = useSession();
   const userName = session?.user?.name ?? "Account";
   const initials = initialsFrom(session?.user?.name, session?.user?.email);
@@ -68,15 +84,15 @@ export function Topbar({ collapsed, onToggleCollapse }: { collapsed: boolean; on
       </div>
 
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
-        <div className="relative hidden md:block">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search…" className="h-9 w-48 pl-8" aria-label="Search" />
-        </div>
-
         <Button variant="outline" size="sm" onClick={refresh} disabled={refreshing} className="gap-2">
           <RefreshCw className={cn("size-3.5", refreshing && "animate-spin")} />
           <span className="hidden text-xs text-muted-foreground sm:inline">
-            {refreshing ? "Refreshing…" : hydrated ? `Updated ${relative(lastUpdated)}` : "Updated"}
+            {refreshing
+              ? "Refreshing…"
+              : !hydrated || lastUpdated === 0
+                // Nothing has come back yet — say so instead of inventing an age.
+                ? "Checking…"
+                : `Updated ${relative(lastUpdated)}`}
           </span>
         </Button>
 

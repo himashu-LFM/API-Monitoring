@@ -66,7 +66,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [defaultThresholds, setDefaultThresholds] = useLocalStorage<AlertSettings["thresholds"]>("apimon.defaultThresholds", DEFAULT_ALERT_SETTINGS.thresholds);
   const [account, setAccount] = useLocalStorage<Account>("apimon.account", { name: "Sudhanshu Agrawal", email: "you@example.com" });
   const [frequency, setFrequency] = useLocalStorage<Frequency>("apimon.frequency", "15 minutes");
-  const [lastUpdated, setLastUpdated] = useState<number>(() => Date.now() - 4 * 60 * 1000);
+  // 0 = nothing fetched yet. This used to start at `Date.now() - 4 minutes`,
+  // a leftover from the mock era, so the topbar claimed "Updated 4 minutes ago"
+  // before a single request had been made — and Zyte takes 7-11s, so that lie
+  // sat on screen for the whole first load.
+  const [lastUpdated, setLastUpdated] = useState<number>(0);
   const [refreshing, setRefreshing] = useState(false);
 
   const hydrated = hy1 && hy2 && hy3;
@@ -205,10 +209,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           lastChecked: "just now",
           live: true,
           fetchState: "live" as const,
-          // Real measured days from Zyte's stats API — the chart stops guessing.
-          dailyUsage: Array.isArray(zyte.history)
-            ? zyte.history.map((d: { date: string; usd: number }) => ({ date: d.date, value: d.usd }))
-            : undefined,
           liveNote: zyte.limit == null
             ? "No ZYTE_LIMIT set — this account has no Spending Limit configured on Zyte's own Spending Alerts page either, so this % is against a placeholder, not a real cap."
             : undefined,

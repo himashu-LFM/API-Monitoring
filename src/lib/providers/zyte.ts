@@ -25,8 +25,10 @@ import { nextRenewalOnOrAfter, currentPeriodStart } from "@/lib/format";
  *   stats host is not the billed one (billing is on api.zyte.com scraping
  *   requests — this endpoint only reports that spend).
  *
- *   The cycle total is then the sum of those rows, and the same rows give the
- *   detail page a REAL usage history instead of a synthesized flat line.
+ *   The cycle total is the sum of those rows. (They were also charted on the
+ *   detail page until that chart was removed; the grouping is kept because
+ *   summing the per-day figures is what makes the total verifiable — it was
+ *   cross-checked against the single-row total and matched to the cent.)
  *   Note `cost_microusd_total` arrives as a STRING, so it must be parsed.
  *
  * Auth: HTTP Basic, username = your Zyte *dashboard/stats* API key
@@ -44,8 +46,8 @@ import { nextRenewalOnOrAfter, currentPeriodStart } from "@/lib/format";
 
 const BASE = "https://zyte-api-stats.zyte.com";
 
-/** One real day of Zyte spend, straight from the stats API. */
-export interface ZyteDay {
+/** One real day of Zyte spend, straight from the stats API. Internal only. */
+interface ZyteDay {
   date: string;    // yyyy-mm-dd (UTC)
   usd: number;     // spend that day
   requests: number;
@@ -57,8 +59,6 @@ export interface ZyteUsageResult {
   usage?: number; // USD spent over the window
   limit?: number; // USD budget (yours, or your Zyte Spending Alert amount)
   renewalDate?: string;
-  /** Per-day spend for this cycle, oldest first — measured, not interpolated. */
-  history?: ZyteDay[];
   message?: string;
 }
 
@@ -126,7 +126,7 @@ export async function fetchZyteUsage(): Promise<ZyteUsageResult> {
 
     const usage = Math.round((totalMicroUsd / 1_000_000) * 100) / 100;
 
-    return { ok: true, configured: true, usage, limit, renewalDate, history };
+    return { ok: true, configured: true, usage, limit, renewalDate };
   } catch (e) {
     return { ok: false, configured: true, limit, renewalDate, message: "Zyte request failed: " + (e as Error).message };
   }

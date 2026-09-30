@@ -1,37 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import Link from "next/link";
 import { ChevronLeft, Layers } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/common/states";
-import { Segmented } from "@/components/common/segmented";
 import { ServiceAvatar } from "@/components/common/service-avatar";
 import { StatusBadge } from "@/components/common/status-badge";
-import { UsageChart } from "@/components/charts/usage-chart";
-import { AlertConfiguration } from "./alert-configuration";
 import { useAppState } from "@/hooks/use-app-state";
 import { getUsageStatus } from "@/lib/status";
 import { pct, fmtNum, fmtDate, daysUntil, noDateRenewalLabel } from "@/lib/format";
-import { rangeLabels, usageValues } from "@/lib/chart";
 import { LOW_BALANCE_FLOOR } from "@/lib/alert-rules";
 
 export function ApiDetail({ id }: { id: string }) {
   const { services } = useAppState();
   const service = services.find((s) => s.id === id);
-  const [tab, setTab] = useState<"usage" | "remaining">("usage");
-  const [days, setDays] = useState(30);
-
-  const labels = useMemo(() => rangeLabels(days), [days]);
-  const series = useMemo(() => {
-    if (!service) return [];
-    const base = usageValues(service, days);
-    const data = tab === "remaining"
-      ? base.map((v) => (v == null ? null : Math.round((100 - v) * 10) / 10))
-      : base;
-    return [{ id: service.id, name: `${service.name} ${tab}`, color: service.color, data }];
-  }, [service, days, tab]);
-
   if (!service) {
     return (
       <Card>
@@ -121,21 +103,22 @@ export function ApiDetail({ id }: { id: string }) {
             {service.alertMode === "fixed-webhook" ? (
               <>
                 <p>
-                  {service.name} reports usage by webhook when it crosses{" "}
+                  {service.name} reports usage by webhook only when it crosses{" "}
                   <span className="font-medium text-foreground">80%</span> and{" "}
-                  <span className="font-medium text-foreground">100%</span> — there is no
-                  continuous figure in between, so there is no usage history to chart.
+                  <span className="font-medium text-foreground">100%</span>. Between those
+                  points it sends nothing, so the figure above moves in two steps rather than
+                  continuously — and stays blank until the first one is crossed.
                 </p>
                 <p>
-                  Alert thresholds aren&apos;t configurable here either: the 80/100% points are
-                  fixed by {service.name}, not by this dashboard.
+                  Those two points are fixed by {service.name}, not by this dashboard, so they
+                  can&apos;t be changed here.
                 </p>
               </>
             ) : (
               <>
                 <p>
                   {service.name} only exposes the credits remaining right now — there is no
-                  history endpoint, so any trend line here would be made up rather than measured.
+                  history endpoint, so past usage cannot be shown.
                 </p>
                 <p>
                   Instead of percentage thresholds, this service emails once when the balance
@@ -148,22 +131,12 @@ export function ApiDetail({ id }: { id: string }) {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <Card className="lg:col-span-2">
-            <CardHeader className="flex-row flex-wrap items-center justify-between gap-3 space-y-0">
-              <CardTitle className="text-base">Usage history</CardTitle>
-              <div className="flex items-center gap-2">
-                <Segmented options={[{ label: "Usage", value: "usage" }, { label: "Remaining", value: "remaining" }]} value={tab} onChange={setTab} />
-                <Segmented options={[{ label: "7D", value: 7 }, { label: "30D", value: 30 }, { label: "90D", value: 90 }]} value={days} onChange={setDays} />
-              </div>
-            </CardHeader>
-            <CardContent>
-              <UsageChart labels={labels} series={series} showThresholds={tab === "usage"} />
-            </CardContent>
-          </Card>
-
-          <AlertConfiguration serviceId={service.id} />
-        </div>
+        // Nothing here any more. The usage-history chart and the Alert
+        // configuration panel both used to live in this slot and both were
+        // removed: the config's checkboxes only ever wrote to localStorage,
+        // which the server-side checker cannot read, and the chart went with
+        // it at the same time. The metric cards above carry the live figures.
+        null
       )}
     </div>
   );

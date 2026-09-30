@@ -53,13 +53,6 @@ export interface ApiService {
    * Unset means normal percentage thresholds, with chart and config shown.
    */
   alertMode?: "fixed-webhook" | "low-balance";
-  /**
-   * Real per-day usage for the CURRENT billing cycle, oldest first, measured by
-   * the provider (Zyte's stats API groups by day). `value` is in the service's
-   * own `unit`, not a percentage — the chart accumulates it against `limit`.
-   * When present the chart plots this instead of a synthesized trend.
-   */
-  dailyUsage?: { date: string; value: number }[];
 }
 
 export interface UsagePoint {
