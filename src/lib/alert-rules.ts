@@ -13,7 +13,7 @@ export const DECODO_CRITICAL_PCT = 80;
 // ── SadCaptcha (prepaid credits, no expiry) ──────────────────
 // Judged on credits REMAINING, in two descending tiers:
 //   WARN → first heads-up · CRIT → urgent, credits about to run out
-export const SADCAPTCHA_TIER_WARN = 1_000_000; // 10,00,000 left
+export const SADCAPTCHA_TIER_WARN = 4_593_900; // TEMP TEST — revert to 1_000_000 after email confirmed
 export const SADCAPTCHA_TIER_CRIT = 500_000;   //  5,00,000 left
 
 // Back-compat alias (older UI referenced this name).
