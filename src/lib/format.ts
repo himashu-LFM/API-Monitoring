@@ -18,6 +18,26 @@ export function daysUntil(iso: string): number {
   return Math.round((d.getTime() - today().getTime()) / 86400000);
 }
 
+/**
+ * What to show in the Renewal column for a service with no renewal DATE.
+ *
+ * An empty `renewalDate` means two opposite things depending on the service, and
+ * they were collapsed into one "No expiry" label:
+ *   - SadCaptcha: prepaid credits that genuinely never reset.
+ *   - YouTube: a quota that resets EVERY DAY at midnight Pacific.
+ * "No expiry" on the daily one read as "nothing to worry about", which is the
+ * opposite of the truth, so the billing cycle decides the wording.
+ */
+export function noDateRenewalLabel(billingCycle: string): string {
+  switch (billingCycle) {
+    case "Daily": return "Renews daily";
+    case "Weekly": return "Renews weekly";
+    case "Monthly": return "Renews monthly";
+    case "Annual": return "Renews yearly";
+    default: return "No expiry";
+  }
+}
+
 export function fmtDate(iso: string): string {
   const d = new Date(iso + (iso.length <= 10 ? "T00:00:00" : ""));
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });

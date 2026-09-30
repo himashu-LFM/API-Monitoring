@@ -10,7 +10,7 @@ import { ServiceAvatar } from "@/components/common/service-avatar";
 import { StatusBadge } from "@/components/common/status-badge";
 import { UsageProgress } from "@/components/common/usage-progress";
 import { getUsageStatus } from "@/lib/status";
-import { pct, fmtNum, fmtDateShort, daysUntil } from "@/lib/format";
+import { pct, fmtNum, fmtDateShort, daysUntil, noDateRenewalLabel } from "@/lib/format";
 import { useAppState } from "@/hooks/use-app-state";
 import type { ApiService } from "@/lib/types";
 
@@ -111,7 +111,7 @@ export function ApiTable({ services }: { services: ApiService[] }) {
                       <div className="text-xs text-muted-foreground">{fmtDateShort(s.renewalDate)}</div>
                     </>
                   ) : hasNumbers || failed || waiting ? (
-                    <div className="text-xs text-muted-foreground">No expiry</div>
+                    <div className="text-xs text-muted-foreground">{noDateRenewalLabel(s.billingCycle)}</div>
                   ) : <Skeleton className="w-14" />}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{s.lastChecked}</TableCell>

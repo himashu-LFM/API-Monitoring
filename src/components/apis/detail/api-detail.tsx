@@ -12,7 +12,7 @@ import { UsageChart } from "@/components/charts/usage-chart";
 import { AlertConfiguration } from "./alert-configuration";
 import { useAppState } from "@/hooks/use-app-state";
 import { getUsageStatus } from "@/lib/status";
-import { pct, fmtNum, fmtDate, daysUntil } from "@/lib/format";
+import { pct, fmtNum, fmtDate, daysUntil, noDateRenewalLabel } from "@/lib/format";
 import { rangeLabels, usageValues } from "@/lib/chart";
 import { LOW_BALANCE_FLOOR } from "@/lib/alert-rules";
 
@@ -57,7 +57,7 @@ export function ApiDetail({ id }: { id: string }) {
     { label: "Usage limit", value: hasNumbers ? fmtNum(service.limit!) : dash, sub: `${service.unit}/cycle` },
     { label: "Remaining", value: hasNumbers ? fmtNum(service.limit! - service.usage!) : dash, sub: hasNumbers ? `${100 - p}% left` : "not measured" },
     { label: "Usage", value: hasNumbers ? `${p}%` : dash, sub: hasNumbers ? getUsageStatus(p) : waiting ? "reports at 80%" : "not measured" },
-    { label: "Renewal", value: hasRenewal ? fmtDate(service.renewalDate) : "No expiry", sub: hasRenewal ? service.billingCycle : "credits don't expire", small: true },
+    { label: "Renewal", value: hasRenewal ? fmtDate(service.renewalDate) : noDateRenewalLabel(service.billingCycle), sub: hasRenewal ? service.billingCycle : service.billingCycle === "Daily" ? "midnight Pacific" : "credits don't expire", small: true },
     { label: "Days remaining", value: d != null ? `${d}` : "—", sub: hasRenewal ? "until renewal" : "n/a" },
   ];
 
