@@ -149,27 +149,31 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             alertMode: webhookMode ? "fixed-webhook" : undefined,
           };
         }
-        // Configured but not reporting (unsupported plan, field not set, no
-        // event this cycle) — say so, don't fake it. Crucially the old figure
-        // must be CLEARED, not just left alone: a browser that merged last
-        // cycle's 80% still has it in localStorage, so simply skipping the
+        // Not reporting right now. What that MEANS depends entirely on whether
+        // Decodo has ever reached us:
+        //
+        //  - It has (webhookSeen) → the connection is proven, so silence really
+        //    does mean "under 80%". Show 0 and keep the LIVE badge.
+        //  - It never has → we have no evidence of anything. Showing 0 would
+        //    claim no threshold was crossed, and LIVE would claim a working
+        //    integration; both would be inventions. Show no number at all.
+        //
+        // These two looked identical before, so a Decodo account with the
+        // webhook URL never registered still displayed "LIVE · 0 / 100".
+        const proven = webhookMode && decodo.webhookSeen === true;
+        // The old figure must be CLEARED, not just left alone: a browser that
+        // merged last cycle's 80% still has it in localStorage, so skipping the
         // write kept a reset plan showing "80 / 100 · High Usage" for days.
-        // 0 here means "no threshold crossed yet", which is what Decodo's
-        // silence actually tells us — it stays quiet until 80%.
         return {
           ...s,
-          usage: webhookMode ? 0 : s.usage,
-          limit: webhookMode ? 100 : s.limit,
+          usage: proven ? 0 : webhookMode ? null : s.usage,
+          limit: proven ? 100 : webhookMode ? null : s.limit,
           unit: webhookMode ? "% of threshold" : s.unit,
           renewalDate: decodo.renewalDate ?? s.renewalDate,
           lastChecked: "just now",
           liveNote: decodo.message ?? "Live fetch failed.",
-          fetchState: webhookMode ? ("live" as const) : ("failed" as const),
-          // In webhook mode this still counts as live: the integration is
-          // connected and Decodo's silence is itself real information (it only
-          // speaks at 80%). The badge means "backed by the real provider", not
-          // "a number was measured just now" — that nuance is in liveNote.
-          live: webhookMode,
+          fetchState: proven ? ("live" as const) : ("failed" as const),
+          live: proven,
           alertMode: webhookMode ? "fixed-webhook" : undefined,
         };
       });
