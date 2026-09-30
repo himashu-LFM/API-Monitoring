@@ -66,7 +66,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [defaultThresholds, setDefaultThresholds] = useLocalStorage<AlertSettings["thresholds"]>("apimon.defaultThresholds", DEFAULT_ALERT_SETTINGS.thresholds);
   const [account, setAccount] = useLocalStorage<Account>("apimon.account", { name: "Sudhanshu Agrawal", email: "you@example.com" });
   const [frequency, setFrequency] = useLocalStorage<Frequency>("apimon.frequency", "15 minutes");
-  const [lastUpdated, setLastUpdated] = useState<number>(() => Date.now() - 4 * 60 * 1000);
+  // 0 = nothing fetched yet. This used to start at `Date.now() - 4 minutes`,
+  // a leftover from the mock era, so the topbar claimed "Updated 4 minutes ago"
+  // before a single request had been made — and Zyte takes 7-11s, so that lie
+  // sat on screen for the whole first load.
+  const [lastUpdated, setLastUpdated] = useState<number>(0);
   const [refreshing, setRefreshing] = useState(false);
 
   const hydrated = hy1 && hy2 && hy3;
@@ -149,27 +153,36 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             alertMode: webhookMode ? "fixed-webhook" : undefined,
           };
         }
-        // Configured but not reporting (unsupported plan, field not set, no
-        // event this cycle) — say so, don't fake it. Crucially the old figure
-        // must be CLEARED, not just left alone: a browser that merged last
-        // cycle's 80% still has it in localStorage, so simply skipping the
-        // write kept a reset plan showing "80 / 100 · High Usage" for days.
-        // 0 here means "no threshold crossed yet", which is what Decodo's
-        // silence actually tells us — it stays quiet until 80%.
+        // No webhook for the CURRENT cycle, so there is no number to show.
+        //
+        // Everything here used to be inferred rather than reported: a 0 because
+        // "Decodo stays quiet under 80%", against a hardcoded 100. Both were our
+        // reasoning, not Decodo's data, and a stored event from a finished cycle
+        // was enough to keep the LIVE badge on. This service is webhook-only, so
+        // it now shows a figure ONLY when a webhook for this cycle delivered one.
+        //
+        // `webhookSeen` still shapes the explanation below — "never connected"
+        // and "connected but quiet" are genuinely different problems — but it no
+        // longer puts a number on screen.
+        //
+        // Clearing the old values matters: a browser that merged last cycle's
+        // 80% still has it in localStorage, so skipping the write would leave a
+        // reset plan showing "80 / 100 · High Usage" for days.
         return {
           ...s,
-          usage: webhookMode ? 0 : s.usage,
-          limit: webhookMode ? 100 : s.limit,
+          usage: webhookMode ? null : s.usage,
+          limit: webhookMode ? null : s.limit,
           unit: webhookMode ? "% of threshold" : s.unit,
           renewalDate: decodo.renewalDate ?? s.renewalDate,
           lastChecked: "just now",
           liveNote: decodo.message ?? "Live fetch failed.",
-          fetchState: webhookMode ? ("live" as const) : ("failed" as const),
-          // In webhook mode this still counts as live: the integration is
-          // connected and Decodo's silence is itself real information (it only
-          // speaks at 80%). The badge means "backed by the real provider", not
-          // "a number was measured just now" — that nuance is in liveNote.
-          live: webhookMode,
+          // Silence is the designed behaviour in webhook mode, not a failure:
+          // Decodo sends nothing between its 80% and 100% points. Marking it
+          // "failed" painted a working integration red and offered a Retry that
+          // could never produce data. Only the REST path (which should answer
+          // every call) is a genuine failure when it doesn't.
+          fetchState: webhookMode ? ("waiting" as const) : ("failed" as const),
+          live: false,
           alertMode: webhookMode ? "fixed-webhook" : undefined,
         };
       });
@@ -196,10 +209,6 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           lastChecked: "just now",
           live: true,
           fetchState: "live" as const,
-          // Real measured days from Zyte's stats API — the chart stops guessing.
-          dailyUsage: Array.isArray(zyte.history)
-            ? zyte.history.map((d: { date: string; usd: number }) => ({ date: d.date, value: d.usd }))
-            : undefined,
           liveNote: zyte.limit == null
             ? "No ZYTE_LIMIT set — this account has no Spending Limit configured on Zyte's own Spending Alerts page either, so this % is against a placeholder, not a real cap."
             : undefined,

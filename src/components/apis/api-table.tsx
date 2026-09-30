@@ -10,7 +10,7 @@ import { ServiceAvatar } from "@/components/common/service-avatar";
 import { StatusBadge } from "@/components/common/status-badge";
 import { UsageProgress } from "@/components/common/usage-progress";
 import { getUsageStatus } from "@/lib/status";
-import { pct, fmtNum, fmtDateShort, daysUntil } from "@/lib/format";
+import { pct, fmtNum, fmtDateShort, daysUntil, noDateRenewalLabel } from "@/lib/format";
 import { useAppState } from "@/hooks/use-app-state";
 import type { ApiService } from "@/lib/types";
 
@@ -42,6 +42,8 @@ export function ApiTable({ services }: { services: ApiService[] }) {
             const hasNumbers = s.usage != null && s.limit != null;
             const p = hasNumbers ? pct(s.usage!, s.limit!) : 0;
             const failed = s.fetchState === "failed";
+            // Working, but nothing to report yet (Decodo speaks only at 80%/100%).
+            const waiting = s.fetchState === "waiting";
             const hasRenewal = !!s.renewalDate;
             const d = hasRenewal ? daysUntil(s.renewalDate) : null;
             return (
@@ -69,6 +71,11 @@ export function ApiTable({ services }: { services: ApiService[] }) {
                 <TableCell>
                   {hasNumbers ? <StatusBadge status={getUsageStatus(p)} />
                     : failed ? <span className="text-xs font-medium text-crit">Unavailable</span>
+                    : waiting ? (
+                      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                        <span className="size-1.5 rounded-full bg-muted-foreground/50" />Monitoring
+                      </span>
+                    )
                     : <Skeleton className="w-16" />}
                 </TableCell>
                 <TableCell>
@@ -89,18 +96,22 @@ export function ApiTable({ services }: { services: ApiService[] }) {
                     >
                       {refreshing ? "Retrying…" : "Retry"}
                     </button>
+                  ) : waiting ? (
+                    // No Retry here on purpose: refetching cannot conjure a
+                    // webhook Decodo hasn't sent.
+                    <span className="text-xs text-muted-foreground">Reports at 80%</span>
                   ) : <Skeleton className="w-full" />}
                 </TableCell>
-                <TableCell className="text-right tabular-nums">{hasNumbers ? fmtNum(s.limit!) : <Skeleton className="ml-auto w-12" />}</TableCell>
-                <TableCell className="text-right tabular-nums">{hasNumbers ? fmtNum(s.limit! - s.usage!) : <Skeleton className="ml-auto w-12" />}</TableCell>
+                <TableCell className="text-right tabular-nums">{hasNumbers ? fmtNum(s.limit!) : failed || waiting ? <span className="text-muted-foreground">—</span> : <Skeleton className="ml-auto w-12" />}</TableCell>
+                <TableCell className="text-right tabular-nums">{hasNumbers ? fmtNum(s.limit! - s.usage!) : failed || waiting ? <span className="text-muted-foreground">—</span> : <Skeleton className="ml-auto w-12" />}</TableCell>
                 <TableCell>
                   {hasRenewal ? (
                     <>
                       <div className="font-medium tabular-nums">{d}d</div>
                       <div className="text-xs text-muted-foreground">{fmtDateShort(s.renewalDate)}</div>
                     </>
-                  ) : hasNumbers || failed ? (
-                    <div className="text-xs text-muted-foreground">No expiry</div>
+                  ) : hasNumbers || failed || waiting ? (
+                    <div className="text-xs text-muted-foreground">{noDateRenewalLabel(s.billingCycle)}</div>
                   ) : <Skeleton className="w-14" />}
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">{s.lastChecked}</TableCell>

@@ -54,6 +54,18 @@ export interface DecodoUsageResult {
   limitGb?: number;
   renewalDate?: string;
   message?: string;
+  /**
+   * Webhook mode only: has Decodo EVER delivered an event to us — in this cycle
+   * or any earlier one?
+   *
+   * This is the difference between two states that otherwise look identical:
+   * "the webhook is wired up and Decodo is simply quiet because usage is under
+   * 80%", and "nothing is wired up at all". Decodo exposes no way to ask
+   * whether our URL is registered, so a delivered event is the only proof the
+   * connection works. Without this flag the UI marked the service live in both
+   * cases, claiming a working integration it had no evidence for.
+   */
+  webhookSeen?: boolean;
   /** Present only when TRAFFIC_FIELD isn't set yet, to help you find it. */
   rawSample?: unknown;
 }
@@ -157,7 +169,7 @@ async function fetchViaWebhook(): Promise<DecodoUsageResult> {
   const token = process.env.DECODO_WEBHOOK_TOKEN?.trim();
   if (!token) {
     return {
-      ok: false, configured: true, mode: "webhook",
+      ok: false, configured: true, mode: "webhook", webhookSeen: false,
       renewalDate,
       message: "Datacenter/ISP proxies aren't supported by Decodo's REST API. Set DECODO_WEBHOOK_TOKEN and register https://<your-domain>/api/webhooks/decodo/<token> in the Decodo dashboard's Webhooks tab to get live threshold alerts instead.",
     };
@@ -166,9 +178,9 @@ async function fetchViaWebhook(): Promise<DecodoUsageResult> {
   const event = await readDecodoWebhookEvent();
   if (!event) {
     return {
-      ok: false, configured: true, mode: "webhook",
+      ok: false, configured: true, mode: "webhook", webhookSeen: false,
       renewalDate,
-      message: "Webhook is configured but no event has arrived yet. Decodo only sends `traffic_usage` at 80% and 100% — this won't show live numbers in between, only the last threshold crossed.",
+      message: "No webhook has ever reached this app, so the connection is unproven — the URL may not be registered in Decodo's dashboard, or the token may not match. Note that even a correct setup stays silent until traffic hits 80%, so this will keep saying the same thing until then.",
     };
   }
 
@@ -180,7 +192,7 @@ async function fetchViaWebhook(): Promise<DecodoUsageResult> {
   const stale = periodStart != null && event.receivedAt < periodStart + "T00:00:00.000Z";
   if (stale) {
     return {
-      ok: false, configured: true, mode: "webhook", renewalDate,
+      ok: false, configured: true, mode: "webhook", webhookSeen: true, renewalDate,
       message: `Traffic reset on ${periodStart} and Decodo hasn't sent a webhook since — the last one (${event.usagePercent ?? "?"}% on ${event.receivedAt.slice(0, 10)}) belongs to the previous cycle. Datacenter plans stay silent until 80%, so no news here means under 80%.`,
     };
   }
@@ -189,6 +201,7 @@ async function fetchViaWebhook(): Promise<DecodoUsageResult> {
     ok: event.usagePercent != null,
     configured: true,
     mode: "webhook",
+    webhookSeen: true,
     usageGb: event.usagePercent ?? undefined, // treated as a 0-100 percentage, not GB
     limitGb: 100,
     renewalDate,

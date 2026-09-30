@@ -1,20 +1,39 @@
 # Netlify build config.
 #
-# The Next.js runtime is auto-installed by Netlify, so no plugin entry is
-# needed. Node 20 is pinned because the build tooling and @netlify/blobs both
-# expect a modern runtime and Netlify's default has moved before.
+# Deliberately minimal: Netlify detects Next.js and installs its own Next
+# Runtime, which sets the publish directory and the function wiring itself.
+# An explicit `publish` here fights that, so it is NOT set — only the Node
+# version is pinned, because Netlify's default has moved before and
+# @netlify/blobs expects a modern runtime.
 
 [build]
   command = "npm run build"
-  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
-  # Netlify's secrets scanner checks every env var's value against the repo
-  # and build output. These are plain config (dates, numbers, enums, an org
-  # id), not secrets, and their short values collide with ordinary text —
-  # e.g. a renewal date matching a date in a code comment — failing the build.
-  # Email addresses and the Google project number also appear in source
-  # (the admin list, a doc comment) and aren't secrets either.
-  # Real secrets (API keys, tokens, passwords) are still scanned.
-  SECRETS_SCAN_OMIT_KEYS = "ADMIN_EMAILS,GMAIL_USER,ALERT_EMAIL_TO,GOOGLE_PROJECT_ID,ZYTE_ORG_ID,ZYTE_RENEWAL,ZYTE_LIMIT,ZYTE_BILLING_CYCLE,DECODO_RENEWAL,DECODO_BILLING_CYCLE,DECODO_PROXY_TYPE,DECODO_TRAFFIC_FIELD,GOOGLE_LIMIT,ALERT_THRESHOLDS,SADCAPTCHA_TOTAL_CREDITS"
+
+  # Netlify's secrets scanner fails the build when the VALUE of any environment
+  # variable also appears in the repo. That is the right default, but several of
+  # our variables hold ordinary configuration whose values legitimately live in
+  # the code, and the scanner can't tell the difference:
+  #
+  #   ZYTE_BILLING_CYCLE  = "Monthly"            → the BillingCycle union in types.ts
+  #   ALERT_THRESHOLDS    = "50,75,90,100"       → the default in alert-checker.ts
+  #   DECODO_PROXY_TYPE   = "datacenter_proxies" → named throughout decodo.ts
+  #   GOOGLE_LIMIT        = the quota number     → quoted in .env.example's docs
+  #   GMAIL_USER / ALERT_EMAIL_TO / ADMIN_EMAILS → addresses, and the admin
+  #     allowlist in src/lib/admins.ts holds them on purpose
+  #
+  # Only these non-secret keys are exempted. Every actual credential
+  # (AUTH_SECRET, AUTH_GOOGLE_SECRET, CRON_SECRET, DECODO_API_KEY,
+  # DECODO_WEBHOOK_TOKEN, GMAIL_APP_PASSWORD, GOOGLE_SA_KEY,
+  # SADCAPTCHA_LICENSE_KEY, ZYTE_API_KEY) is still scanned — so if one of those
+  # is ever committed, the build will still fail, which is what we want.
+  SECRETS_SCAN_OMIT_KEYS = "ADMIN_EMAILS,ALERT_EMAIL_TO,ALERT_THRESHOLDS,DECODO_BILLING_CYCLE,DECODO_PROXY_TYPE,DECODO_RENEWAL,DECODO_TRAFFIC_FIELD,GMAIL_USER,GOOGLE_LIMIT,GOOGLE_PROJECT_ID,GOOGLE_SERVICE,SADCAPTCHA_TOTAL_CREDITS,ZYTE_BILLING_CYCLE,ZYTE_LIMIT,ZYTE_ORG_ID,ZYTE_RENEWAL"
+
+  # webpack's incremental build cache. It stores copies of our own source, so
+  # any value that appears in a comment gets re-flagged from here as well —
+  # the same false positive, reported from a second location. This directory is
+  # a build artifact and is never served to anyone, so scanning it adds nothing.
+  # Scoped to the cache only: the real deploy output stays scanned.
+  SECRETS_SCAN_OMIT_PATHS = ".netlify/.next/cache/**"
