@@ -13,6 +13,24 @@ jobs:
     steps:
       - name: Trigger /api/cron/check
         run: |
-          curl -fsS --max-time 60 \
-            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
-            https://api-tracking.netlify.app/api/cron/check
+          set +e  # handle curl failures ourselves so we can retry
+          url="https://api-tracking.netlify.app/api/cron/check"
+          # The function is almost always cold (cron runs hours apart), so the
+          # first hit can exceed Netlify's gateway timeout and return 504. A
+          # retry hits a now-warm function and succeeds. Blobs-backed dedup makes
+          # a repeat call safe — it never double-sends an email.
+          for attempt in 1 2 3 4; do
+            echo "Attempt $attempt..."
+            body=$(curl -sS --max-time 90 -w "\nHTTP_STATUS:%{http_code}" \
+              -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" "$url")
+            status=$(printf '%s' "$body" | sed -n 's/.*HTTP_STATUS:\([0-9]*\)$/\1/p')
+            echo "$body"
+            if [ "$status" = "200" ]; then
+              echo "✓ usage check succeeded"
+              exit 0
+            fi
+            echo "Non-200 (status=${status:-none}); retrying after backoff..."
+            sleep $((attempt * 15))  # 15s, 30s, 45s
+          done
+          echo "✗ usage check failed after 4 attempts"
+          exit 1
