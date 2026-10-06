@@ -19,6 +19,17 @@ export interface DecodoWebhookEvent {
   username: string | null;
   dateTime: string | null;
   receivedAt: string;
+  /**
+   * The untouched body Decodo posted.
+   *
+   * Decodo documents no webhook payload schema, so the field holding the usage
+   * figure was a guess — and a wrong one: the first real event arrived on
+   * 2026-10-06 and parsed to null, showing "usage ?%" on the dashboard with the
+   * actual number lost. Keeping the raw body means the next event tells us the
+   * true shape instead of costing another guess, and it is surfaced in the UI
+   * when parsing fails so it can be read without server access.
+   */
+  raw?: unknown;
 }
 
 export async function saveDecodoWebhookEvent(event: DecodoWebhookEvent): Promise<void> {
