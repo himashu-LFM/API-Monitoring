@@ -30,6 +30,8 @@ export interface CheckedService {
   limit: number | null;
   percent: number | null;
   remaining?: number | null;
+  /** Decodo only: a threshold-crossing webhook arrived this cycle (number may be unreadable). */
+  thresholdCrossed?: boolean;
   unit: string;
   renewalDate?: string;
   /** cycle identity, so alert records reset each period (daily/monthly) */
@@ -94,7 +96,13 @@ async function gather(): Promise<{ checked: CheckedService[]; cycleKeys: string[
   checked.push({
     id: "decodo", name: "Decodo", unit: decodo.mode === "webhook" ? "%" : "GB", cycleKey: decodoCycle, renewalDate: decodo.renewalDate,
     usage: decodo.usageGb ?? null, limit: decodo.limitGb ?? null, percent: pct(decodo.usageGb, decodo.limitGb),
-    skipped: !decodo.configured ? "not configured" : (!decodo.ok || decodo.usageGb == null || decodo.limitGb == null) ? (decodo.message || "no event yet") : undefined,
+    thresholdCrossed: decodo.thresholdCrossed === true,
+    // A crossing signal is enough to evaluate, even with no readable number —
+    // otherwise an unparseable webhook marks Decodo skipped and silences it.
+    skipped: !decodo.configured ? "not configured"
+      : decodo.thresholdCrossed === true ? undefined
+      : (!decodo.ok || decodo.usageGb == null || decodo.limitGb == null) ? (decodo.message || "no event yet")
+      : undefined,
   });
 
   // YouTube Data API — daily quota, resets midnight PT (cycle = PT date).
@@ -117,6 +125,13 @@ function evaluate(s: CheckedService): { level: number; reason: string; urgent: b
     if (s.percent != null && s.percent >= DECODO_CRITICAL_PCT) {
       return { level: DECODO_CRITICAL_PCT, urgent: true,
         reason: `usage reached ${s.percent}% of the plan (critical at ${DECODO_CRITICAL_PCT}%).` };
+    }
+    // Decodo sends traffic_usage only at 80% and 100%, so its arrival alone
+    // proves the critical threshold was crossed. Fire on that, not on the
+    // number — the number has already failed to parse once and cost an alert.
+    if (s.thresholdCrossed) {
+      return { level: DECODO_CRITICAL_PCT, urgent: true,
+        reason: `Decodo reported that traffic crossed its ${DECODO_CRITICAL_PCT}% threshold. The exact percentage couldn't be read from the webhook — check the Decodo dashboard for the current figure.` };
     }
     return null;
   }

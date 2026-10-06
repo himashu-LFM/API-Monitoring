@@ -66,6 +66,17 @@ export interface DecodoUsageResult {
    * cases, claiming a working integration it had no evidence for.
    */
   webhookSeen?: boolean;
+  /**
+   * Webhook mode only: Decodo has signalled THIS cycle that a traffic threshold
+   * was crossed — true even when the exact percentage couldn't be parsed.
+   *
+   * Decodo sends `traffic_usage` only at 80% and 100%, never in between, so the
+   * mere arrival of one is proof usage is at least 80%. The alert must not
+   * depend on reading the number: on 2026-10-06 a real 80% event arrived, its
+   * figure failed to parse, and because the checker keyed off the number alone,
+   * no email was sent at all.
+   */
+  thresholdCrossed?: boolean;
   /** Present only when TRAFFIC_FIELD isn't set yet, to help you find it. */
   rawSample?: unknown;
 }
@@ -202,10 +213,18 @@ async function fetchViaWebhook(): Promise<DecodoUsageResult> {
     configured: true,
     mode: "webhook",
     webhookSeen: true,
+    // Only the usage event implies a crossing; e.g. a payment-failed webhook
+    // must not be read as "80% reached".
+    thresholdCrossed: event.eventName === "traffic_usage",
     usageGb: event.usagePercent ?? undefined, // treated as a 0-100 percentage, not GB
     limitGb: 100,
     renewalDate,
-    message: `Last webhook: ${event.eventName} at ${event.receivedAt} (usage ${event.usagePercent ?? "?"}%). Datacenter plans only report at 80%/100% thresholds, not continuously.`,
+    message: event.usagePercent != null
+      ? `Last webhook: ${event.eventName} at ${event.receivedAt} (usage ${event.usagePercent}%). Datacenter plans only report at 80%/100% thresholds, not continuously.`
+      // Parsing failed. Show what Decodo actually sent rather than a bare "?" —
+      // their payload schema is undocumented, and the first real event was lost
+      // to a wrong field guess. Seeing the body here is what ends the guessing.
+      : `A webhook arrived at ${event.receivedAt} but no usage percentage could be read from it. Raw payload: ${JSON.stringify(event.raw ?? {}).slice(0, 300)}`,
   };
 }
 
