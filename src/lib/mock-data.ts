@@ -24,6 +24,9 @@ export const SERVICE_SHELLS: ApiService[] = [
   { id: "sadcaptcha", name: "SadCaptcha", provider: "SadCaptcha API", color: "#a855f7",
     usage: null, limit: null, unit: "credits", renewalDate: "",
     billingCycle: "Custom", authType: "API Key", lastChecked: "never", fetchState: "loading" },
+  { id: "anthropic", name: "Anthropic", provider: "Claude API", color: "#d97757",
+    usage: null, limit: null, unit: "$", renewalDate: "",
+    billingCycle: "Custom", authType: "API Key", lastChecked: "never", fetchState: "loading" },
 ];
 
 export const DEFAULT_ALERT_SETTINGS: AlertSettings = {

@@ -50,5 +50,5 @@ export default auth((req) => {
 // alert cron (GitHub Actions) and the Decodo webhook. Those are protected by
 // their own secret token (CRON_SECRET / DECODO_WEBHOOK_TOKEN), not login.
 export const config = {
-  matcher: ["/((?!api/auth|api/cron|api/webhooks|_next/static|_next/image|favicon.ico|.*\\..*).*)"],
+  matcher: ["/((?!api/auth|api/cron|api/webhooks|api/otel|_next/static|_next/image|favicon.ico|.*\\..*).*)"],
 };

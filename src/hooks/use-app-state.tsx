@@ -275,7 +275,32 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       });
     });
 
-    await Promise.allSettled([decodoJob, zyteJob, sadcaptchaJob, googleJob]);
+    const anthropicJob = get("/api/anthropic").then((anthropic) => {
+      if (!anthropic?.configured) {
+        patch("anthropic", (s) => ({ ...s, live: false, fetchState: "failed" as const,
+          liveNote: anthropic?.message ?? "Not configured — add ANTHROPIC_ADMIN_KEY to .env.local." }));
+        return;
+      }
+      patch("anthropic", (s) => {
+        if (!anthropic.ok) {
+          return { ...s, liveNote: anthropic.message ?? "Live fetch failed.", live: false, fetchState: "failed" as const };
+        }
+        return {
+          ...s,
+          usage: anthropic.usage,
+          limit: anthropic.limit ?? s.limit,
+          unit: "$",
+          lastChecked: "just now",
+          live: true,
+          fetchState: "live" as const,
+          liveNote: anthropic.limit == null
+            ? "No ANTHROPIC_LIMIT set — enter your top-up amount (USD) so remaining is accurate."
+            : anthropic.message,
+        };
+      });
+    });
+
+    await Promise.allSettled([decodoJob, zyteJob, sadcaptchaJob, googleJob, anthropicJob]);
     setLastUpdated(Date.now());
   }, [setServices]);
 
