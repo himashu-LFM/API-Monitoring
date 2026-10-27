@@ -81,8 +81,12 @@ export async function fetchAnthropicUsage(): Promise<AnthropicUsageResult> {
   // full top-up (e.g. 400) while "used" = baseline + OTel estimate. Shows the
   // baseline immediately, even before any spans arrive.
   const baseline = Number(process.env.ANTHROPIC_BASELINE_SPENT ?? 0) || 0;
+  // Calibration factor: real spend has run ~2× our token estimate (cache,
+  // service tier, spans we don't price). Tune ANTHROPIC_OTEL_MULTIPLIER to
+  // match the Console; defaults to 1 (no adjustment).
+  const otelMult = Number(process.env.ANTHROPIC_OTEL_MULTIPLIER ?? 1) || 1;
   const otel = await otelTotalUsd();
-  const otelUsd = otel?.usd ?? 0;
+  const otelUsd = (otel?.usd ?? 0) * otelMult;
   const spanCount = otel?.spanCount ?? 0;
 
   if (limit != null || baseline > 0 || otel) {
