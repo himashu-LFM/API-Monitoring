@@ -76,18 +76,24 @@ export async function fetchAnthropicUsage(): Promise<AnthropicUsageResult> {
   // Anthropic pushes a span per request to /api/otel; we price the tokens. Set
   // ANTHROPIC_LIMIT to your Console credit balance when the destination went
   // live, and "used" = estimated spend since then.
+  // OTel only counts spend from go-live, so add the spend already made before
+  // the destination was added (ANTHROPIC_BASELINE_SPENT) to keep LIMIT at the
+  // full top-up (e.g. 400) while "used" = baseline + OTel estimate. Shows the
+  // baseline immediately, even before any spans arrive.
+  const baseline = Number(process.env.ANTHROPIC_BASELINE_SPENT ?? 0) || 0;
   const otel = await otelTotalUsd();
-  if (otel) {
-    return {
-      ok: true, configured: true, usage: otel.usd, limit,
-      message: `Estimated from OpenTelemetry (${otel.spanCount} requests since go-live) — not bill-exact. Reconcile with the Console Cost page periodically.`,
-    };
-  }
+  const otelUsd = otel?.usd ?? 0;
+  const spanCount = otel?.spanCount ?? 0;
 
-  // Configured (LIMIT set) but no data yet: OTel destination not live, or no
-  // requests since it went live.
-  if (limit != null || key) {
-    return { ok: false, configured: true, limit, message: "Waiting for OpenTelemetry data — add the destination in the Console (and ensure OTEL_INGEST_SECRET matches), or set ANTHROPIC_USED for a manual value." };
+  if (limit != null || baseline > 0 || otel) {
+    const usage = Math.round((baseline + otelUsd) * 100) / 100;
+    const base = baseline > 0 ? `$${baseline.toFixed(2)} before tracking + ` : "";
+    return {
+      ok: true, configured: true, usage, limit,
+      message: spanCount > 0
+        ? `Estimated: ${base}OpenTelemetry since go-live (${spanCount} requests). Not bill-exact — reconcile with the Console Cost page periodically.`
+        : `Showing ${base}$0 tracked so far. New Claude usage is counted once the Console OpenTelemetry destination is live.`,
+    };
   }
   return { ok: false, configured: false, message: "Set ANTHROPIC_USED (manual) or ANTHROPIC_LIMIT + the OpenTelemetry destination in .env.local / Console." };
 }
