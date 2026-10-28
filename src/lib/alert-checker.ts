@@ -226,7 +226,23 @@ export async function runUsageCheck(): Promise<CheckResult> {
 
   for (const s of checked) {
     const result = evaluate(s);
-    const already = await highestNotified(s.id, s.cycleKey);
+    let already = await highestNotified(s.id, s.cycleKey);
+
+    // Zyte top-up: raising ZYTE_LIMIT drops the percent against the NEW limit,
+    // so re-arm the 50%/80% alerts. Within a cycle spend only grows, so a
+    // percent drop means the limit went up (a top-up) — safe to re-arm. Drop
+    // the recorded level to whatever the new percent still justifies, so a
+    // later climb re-fires (e.g. 82% of $5120 → 65% of $6500 re-arms the 80%
+    // alert but not the 50% one). cycleKey is unchanged by a top-up, so without
+    // this the dedup would suppress alerts until the cycle rolls over. Runs
+    // before the dedup check below so a currently-justified level can re-fire.
+    if (s.id === "zyte" && s.percent != null && already > 0) {
+      const earned = s.percent >= ZYTE_CRITICAL_PCT ? 2 : s.percent >= ZYTE_EARLY_PCT ? 1 : 0;
+      if (earned < already) {
+        await recordNotified(s.id, s.cycleKey, earned);
+        already = earned;
+      }
+    }
 
     if (!result) {
       // SadCaptcha has a constant cycle, so re-arm explicitly once it's back
