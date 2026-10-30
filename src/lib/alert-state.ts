@@ -38,6 +38,24 @@ export async function recordNotified(serviceId: string, cycleKey: string, thresh
   await write(state);
 }
 
+// ── Last-seen limit (for top-up detection) ───────────────────
+// A prepaid top-up raises the limit mid-cycle. We remember the limit we last
+// saw so the checker can tell "the limit just went up" (a top-up) from normal
+// operation, and re-arm the alerts even when spend is still above a threshold
+// against the NEW limit. Key order puts cycleKey last so pruneOldCycles keeps it.
+
+export async function lastSeenLimit(serviceId: string, cycleKey: string): Promise<number | null> {
+  const state = await read();
+  const v = state[`${serviceId}:limit:${cycleKey}`];
+  return typeof v === "number" ? v : null;
+}
+
+export async function recordLimit(serviceId: string, cycleKey: string, limit: number): Promise<void> {
+  const state = await read();
+  state[`${serviceId}:limit:${cycleKey}`] = limit;
+  await write(state);
+}
+
 /** Drop records for cycles that are no longer current, so the file can't grow forever. */
 export async function pruneOldCycles(currentKeys: string[]): Promise<void> {
   const state = await read();

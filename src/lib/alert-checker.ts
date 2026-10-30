@@ -4,7 +4,7 @@ import { fetchSadCaptchaUsage } from "./providers/sadcaptcha";
 import { fetchDecodoUsage } from "./providers/decodo";
 import { fetchGoogleUsage } from "./providers/google";
 import { sendAlertEmail, emailConfigured } from "./email";
-import { highestNotified, recordNotified, pruneOldCycles } from "./alert-state";
+import { highestNotified, recordNotified, pruneOldCycles, lastSeenLimit, recordLimit } from "./alert-state";
 import { daysUntil } from "./format";
 import {
   DECODO_CRITICAL_PCT,
@@ -228,20 +228,21 @@ export async function runUsageCheck(): Promise<CheckResult> {
     const result = evaluate(s);
     let already = await highestNotified(s.id, s.cycleKey);
 
-    // Zyte top-up: raising ZYTE_LIMIT drops the percent against the NEW limit,
-    // so re-arm the 50%/80% alerts. Within a cycle spend only grows, so a
-    // percent drop means the limit went up (a top-up) — safe to re-arm. Drop
-    // the recorded level to whatever the new percent still justifies, so a
-    // later climb re-fires (e.g. 82% of $5120 → 65% of $6500 re-arms the 80%
-    // alert but not the 50% one). cycleKey is unchanged by a top-up, so without
-    // this the dedup would suppress alerts until the cycle rolls over. Runs
-    // before the dedup check below so a currently-justified level can re-fire.
-    if (s.id === "zyte" && s.percent != null && already > 0) {
-      const earned = s.percent >= ZYTE_CRITICAL_PCT ? 2 : s.percent >= ZYTE_EARLY_PCT ? 1 : 0;
-      if (earned < already) {
-        await recordNotified(s.id, s.cycleKey, earned);
-        already = earned;
+    // Zyte top-up: a prepaid top-up raises ZYTE_LIMIT mid-cycle. That's a fresh
+    // start — both the 50% and 80% alerts should re-arm and fire again if spend
+    // is already past them against the NEW limit (even if the percent is still
+    // ≥80%, which a percent-drop check would miss). We detect it by comparing
+    // the live limit to the last limit we saw this cycle: an INCREASE = a top-up
+    // → wipe the dedup so the next evaluate() re-fires whatever now applies. The
+    // cycleKey is unchanged by a top-up, so without this the alert would stay
+    // suppressed until the cycle rolls over.
+    if (s.id === "zyte" && s.limit != null) {
+      const prevLimit = await lastSeenLimit(s.id, s.cycleKey);
+      if (prevLimit != null && s.limit > prevLimit && already > 0) {
+        await recordNotified(s.id, s.cycleKey, 0); // full re-arm on top-up
+        already = 0;
       }
+      await recordLimit(s.id, s.cycleKey, s.limit);
     }
 
     if (!result) {
