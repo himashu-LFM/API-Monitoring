@@ -220,9 +220,17 @@ function renderEmail(fired: CheckedService[]): { subject: string; html: string; 
   return { subject, html, urgent };
 }
 
-export async function runUsageCheck(): Promise<CheckResult> {
+export async function runUsageCheck(opts?: { rearm?: string[] }): Promise<CheckResult> {
   const { checked, cycleKeys } = await gather();
   const fired: CheckedService[] = [];
+  const rearm = new Set((opts?.rearm ?? []).map((s) => s.trim().toLowerCase()).filter(Boolean));
+
+  // One-shot manual re-arm: clear a service's dedup for this cycle so a rule it
+  // already emailed fires once more on this run. Used to deliver an alert that
+  // was suppressed by stale state (e.g. a top-up the auto-detector never saw).
+  for (const s of checked) {
+    if (rearm.has(s.id)) await recordNotified(s.id, s.cycleKey, 0);
+  }
 
   for (const s of checked) {
     const result = evaluate(s);

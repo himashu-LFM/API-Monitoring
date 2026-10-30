@@ -19,6 +19,10 @@ export async function GET(req: Request) {
     }
   }
 
-  const result = await runUsageCheck();
+  // Optional one-shot re-arm: ?rearm=zyte (or a comma-separated list) clears
+  // those services' dedup for this run so a suppressed alert fires once. Still
+  // behind CRON_SECRET above, so it isn't publicly callable.
+  const rearm = new URL(req.url).searchParams.get("rearm");
+  const result = await runUsageCheck(rearm ? { rearm: rearm.split(",") } : undefined);
   return NextResponse.json(result);
 }
