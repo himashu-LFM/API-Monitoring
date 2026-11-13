@@ -10,6 +10,7 @@ import { useAppState } from "@/hooks/use-app-state";
 import { getUsageStatus } from "@/lib/status";
 import { pct, fmtNum, fmtDate, daysUntil, noDateRenewalLabel } from "@/lib/format";
 import { LOW_BALANCE_FLOOR } from "@/lib/alert-rules";
+import { TopupCard } from "./topup-card";
 
 export function ApiDetail({ id }: { id: string }) {
   const { services } = useAppState();
@@ -138,6 +139,8 @@ export function ApiDetail({ id }: { id: string }) {
         // it at the same time. The metric cards above carry the live figures.
         null
       )}
+
+      <TopupCard serviceId={service.id} />
     </div>
   );
 }

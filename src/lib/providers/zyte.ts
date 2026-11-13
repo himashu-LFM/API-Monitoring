@@ -1,5 +1,6 @@
 import "server-only";
 import { nextRenewalOnOrAfter, currentPeriodStart } from "@/lib/format";
+import { readTopups } from "@/lib/topups";
 
 /**
  * Real Zyte integration (server-side only — the API key must stay off
@@ -68,7 +69,11 @@ export async function fetchZyteUsage(): Promise<ZyteUsageResult> {
   if (!apiKey) return { ok: false, configured: false, message: "Set ZYTE_API_KEY (dashboard/stats API key, not the scraping API key) in .env.local" };
   if (!orgId) return { ok: false, configured: false, message: "Set ZYTE_ORG_ID in .env.local" };
 
-  const limit = process.env.ZYTE_LIMIT?.trim() ? Number(process.env.ZYTE_LIMIT) : undefined;
+  // A limit recorded from the dashboard (after a top-up) wins over ZYTE_LIMIT —
+  // it changes without a redeploy. The alert checker's top-up detector sees the
+  // limit rise on its next run and re-arms the 50%/80% alerts.
+  const recorded = (await readTopups()).zyte?.limit;
+  const limit = recorded ?? (process.env.ZYTE_LIMIT?.trim() ? Number(process.env.ZYTE_LIMIT) : undefined);
   const anchor = process.env.ZYTE_RENEWAL?.trim();
   const cycle = process.env.ZYTE_BILLING_CYCLE?.trim() || "Monthly";
   const renewalDate = anchor ? nextRenewalOnOrAfter(anchor, cycle) : undefined;

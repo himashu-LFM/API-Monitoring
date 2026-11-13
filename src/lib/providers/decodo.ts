@@ -1,6 +1,7 @@
 import "server-only";
 import { readDecodoWebhookEvent } from "@/lib/webhook-store";
 import { nextRenewalOnOrAfter, currentPeriodStart } from "@/lib/format";
+import { readTopups } from "@/lib/topups";
 
 /**
  * Real Decodo integration (server-side only — never import this from a
@@ -172,7 +173,9 @@ async function fetchViaRest(apiKey: string, proxyType: string): Promise<DecodoUs
 }
 
 async function fetchViaWebhook(): Promise<DecodoUsageResult> {
-  const anchor = process.env.DECODO_RENEWAL?.trim();
+  // A renewal date recorded from the dashboard wins over DECODO_RENEWAL — it
+  // changes without a redeploy.
+  const anchor = (await readTopups()).decodo?.renewal ?? process.env.DECODO_RENEWAL?.trim();
   const cycle = process.env.DECODO_BILLING_CYCLE?.trim() || "Monthly";
   // Set DECODO_RENEWAL once, to ANY known renewal date (past or future) —
   // this rolls it forward to the next real occurrence, so you never edit it again.
